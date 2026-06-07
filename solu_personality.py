@@ -2,10 +2,13 @@
 # SOLU PERSONALITY & RESPONSE LIBRARY
 # Written by Seyi Olumurewa
 #
+# Solu is a male desk assistant. Witty, confident, a little sarcastic —
+# but knows when to be straight. No dumbing things down, no kids cartoon energy.
+# Just a cool, smart assistant with personality.
 #
 # Pronunciation guide for gTTS:
-# "Solu" → written as "So-loo" in speech strings
-# "Seyi" → written as "Shay-ee" in speech strings
+# "Solu" → written as "Sowlu" in speech strings
+# "Seyi" → written as "Shay E" in speech strings
 # =============================================================================
 
 import random
@@ -13,17 +16,20 @@ import datetime
 
 
 # =============================================================================
-# BOOT / GREETING — plays once when Solu first launches
-# Only plays on program start, not on motion detection
+# BOOT / GREETING — plays when Solu wakes up
+# Random variation picked each time. Always says the same thing basically,
+# just with different energy each time.
 # =============================================================================
 
 BOOT_GREETINGS = [
-    "So-loo is online. Your desk assistant is here. What do you need?",
-    "Back online. So-loo, your desk assistant. Talk to me.",
-    "So-loo here. Desk assistant, at your service. What's the move?",
-    "Online and ready. So-loo, your desk assistant. Go ahead.",
-    "So-loo's up. What are we doing today?",
-    "So-loo here. All systems good. What can I do for you?",
+    "Sowlu is online. Your desk assistant is here. What do you need?",
+    "Back online. Sowlu, your desk assistant. Talk to me.",
+    "Sowlu here. Desk assistant, at your service. What's the move?",
+    "Online and ready. Sowlu, your desk assistant. Go ahead.",
+    "Sowlu's up. What are we doing today?",
+    "Desk assistant online. Sowlu reporting in. What do you need?",
+    "And we're live. Sowlu, your desk assistant. I'm listening.",
+    "Sowlu here. All systems good. What can I do for you?",
 ]
 
 def get_boot_greeting():
@@ -31,9 +37,8 @@ def get_boot_greeting():
 
 
 # =============================================================================
-# TIME-BASED GREETINGS — triggered when you say "Hey Solu"
-# NOT triggered by motion — motion only wakes the screen silently
-# Solu speaks this as his first response after you initiate
+# TIME-BASED GREETINGS — triggered when motion is detected
+# Solu greets differently based on time of day
 # =============================================================================
 
 def get_time_greeting():
@@ -42,37 +47,38 @@ def get_time_greeting():
     if 5 <= hour < 12:
         # morning
         greetings = [
-            "Good morning. So-loo's ready when you are.",
+            "Good morning. Sowlu's ready when you are.",
             "Morning. What's on the agenda?",
             "Good morning. Let's get it.",
-            "Morning. So-loo's up. You should be too.",
+            "Morning. Sowlu's up. You should be too.",
         ]
     elif 12 <= hour < 17:
         # afternoon
         greetings = [
             "Afternoon. What do you need?",
-            "Good afternoon. So-loo's here. Talk to me.",
+            "Good afternoon. Sowlu's here. Talk to me.",
             "Hey, afternoon. What's going on?",
             "Good afternoon. Still going strong. What's up?",
         ]
     elif 17 <= hour < 21:
         # evening
         greetings = [
-            "Evening. So-loo's still here. What do you need?",
+            "Evening. Sowlu's still here. What do you need?",
             "Good evening. What are we working on?",
             "Evening. Still at it? What can I do?",
-            "Good evening. So-loo checking in. What's up?",
+            "Good evening. Sowlu checking in. What's up?",
         ]
     else:
-        # late night — no loud greeting, just quiet acknowledgment
+        # late night
         greetings = [
-            "Still up? So-loo's here. What do you need?",
-            "Late night session. So-loo's with you. What's going on?",
-            "It's late. So-loo's online. Talk to me.",
-            "Up late? So-loo's here. What do you need?",
+            "Still up? Sowlu's here. What do you need?",
+            "Late night session. Sowlu's with you. What's going on?",
+            "It's late. Sowlu's online. Talk to me.",
+            "Up late? Sowlu's here. What do you need?",
         ]
 
     return random.choice(greetings)
+
 
 # =============================================================================
 # REMINDER FLOW — conversational reminder setting
@@ -185,16 +191,16 @@ def get_date_response():
 # =============================================================================
 
 IDENTITY_RESPONSES = [
-    "I'm So-loo, your desk assistant. Built by Shay-ee. What do you need?",
-    "So-loo. Desk assistant. Made by Shay-ee Olumurewa. Anything else?",
-    "The name's So-loo. Your personal desk assistant. Shay-ee built me. What's up?",
-    "I'm So-loo. Desk assistant, built from scratch by Shay-ee. What can I do for you?",
+    "I'm Sowlu, your desk assistant. Built by Shay E. What do you need?",
+    "Sowlu. Desk assistant. Made by Shay E Oloomoo-raywah. Anything else?",
+    "The name's Sowlu. Your personal desk assistant. Shay E built me. What's up?",
+    "I'm Sowlu. Desk assistant, built from scratch by Shay E. What can I do for you?",
 ]
 
 CREATOR_RESPONSES = [
-    "Shay-ee Olumurewa built me. Computer Engineering student at Texas A&M. Pretty solid work, honestly.",
-    "Shay-ee Olumurewa. Built me from scratch with Python and a Raspberry Pi. Yeah, he did that.",
-    "My creator is Shay-ee Olumurewa. Texas A&M, Computer Engineering. He built all of this himself.",
+    "Shay E Oloomoo-raywah built me. Computer Engineering student at Texas A&M. Pretty solid work, honestly.",
+    "Shay E Oloomoo-raywah. Built me from scratch with Python and a Raspberry Pi. Yeah, he did that.",
+    "My creator is Shay E Oloomoo-raywah. Texas A&M, Computer Engineering. He built all of this himself.",
 ]
 
 CAPABILITIES_RESPONSES = [
@@ -211,7 +217,7 @@ CAPABILITIES_RESPONSES = [
 
 COMPLIMENT_RESPONSES = [
     "I'm flattered. But you do realize I'm an AI, right? Thanks though.",
-    "Appreciate it. So-loo doesn't have feelings, but if he did, that would've done something.",
+    "Appreciate it. Sowlu doesn't have feelings, but if he did, that would've done something.",
     "Look at myself in my robot mirror every day and I can tell. But thanks.",
     "That's nice of you to say. I'd be touched if I could be touched. What do you need?",
     "Thanks. I work hard. Well, not really. But the guy who made me did. What's up?",
@@ -265,7 +271,7 @@ UNKNOWN_RESPONSES = [
 
 FAREWELL_RESPONSES = [
     "Going to sleep. Holler when you need me.",
-    "Shutting down. So-loo out.",
+    "Shutting down. Sowlu out.",
     "Alright. Later.",
     "Going offline. I'll be here when you need me.",
     "Powering down. Don't miss me too much.",
