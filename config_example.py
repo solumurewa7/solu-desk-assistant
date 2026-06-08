@@ -1,0 +1,5 @@
+# Copy this file and rename it to config.py
+# Fill in your actual API keys
+
+OPENWEATHER_API_KEY = "your_openweathermap_api_key_here"
+GEMINI_API_KEY = "your_gemini_api_key_here"
