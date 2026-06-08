@@ -5,3 +5,5 @@ data/
 *.mp3
 *.wav
 config.py
+credentials.json
+token.json
