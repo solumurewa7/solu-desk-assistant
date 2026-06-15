@@ -1,9 +1,10 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 import os
 from config import GEMINI_API_KEY
 
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 MEMORY_FILE = "data/memory.json"
 
@@ -67,9 +68,13 @@ def build_system_prompt():
 def ask_gemini(prompt, history):
     try:
         system_prompt = build_system_prompt()
-        chat_model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
-        chat = chat_model.start_chat(history=history)
-        response = chat.send_message(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+            )
+        )
         return response.text
     except:
         return None
@@ -80,13 +85,17 @@ def generate_weather_response(weather_data, history):
     prompt = f"Give a weather report in your personality based on this data: {weather_data}"
     try:
         system_prompt = build_system_prompt()
-        chat_model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
-        chat = chat_model.start_chat(history=history)
-        response = chat.send_message(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+            )
+        )
         return response.text
     except:
         return None
-
+    
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
 def reset_history():
