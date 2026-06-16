@@ -73,7 +73,7 @@ def draw_state(state):
     if state != "alarm":
         now = datetime.now()
         canvas.create_text(250, 450, text=now.strftime("%I:%M %p"), fill="white" if state == "sleep" else "black", font=("Arial", 24, "bold"), tags="clock")
-        canvas.create_text(550, 450, text=get_cached_weather(), fill="white" if state == "sleep" else "black", font=("Arial", 16), tags="weather")
+        canvas.create_text(550, 450, text=get_cached_weather(), fill="white" if state == "sleep" else "black", font=("Arial", 24), tags="weather")
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -84,7 +84,7 @@ def update_clock():
     if current_state != "alarm":
         fill_color = "white" if current_state == "sleep" else "black"
         canvas.create_text(250, 450, text=now.strftime("%I:%M %p"), fill=fill_color, font=("Arial", 24, "bold"), tags="clock")
-        canvas.create_text(550, 450, text=get_cached_weather(), fill=fill_color, font=("Arial", 16), tags="weather")
+        canvas.create_text(550, 450, text=get_cached_weather(), fill=fill_color, font=("Arial", 24), tags="weather")
     root.after(1000, update_clock)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
