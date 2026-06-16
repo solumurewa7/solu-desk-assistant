@@ -5,6 +5,9 @@ import time
 from datetime import datetime
 import os
 
+cached_weather = "Loading weather..."
+last_weather_fetch = 0
+
 SCREEN_W = 800
 SCREEN_H = 480
 FACE_SIZE = 600
@@ -67,16 +70,21 @@ def draw_state(state):
     photo = ImageTk.PhotoImage(bg_img)
     canvas.create_image(0, 0, anchor="nw", image=photo)
     canvas.image = photo
-    now = datetime.now()
-    canvas.create_text(200, 440, text=now.strftime("%I:%M %p"), fill="white" if state == "sleep" else "black", font=("Arial", 24, "bold"), tags="clock")
+    if state != "alarm":
+        now = datetime.now()
+        canvas.create_text(400, 440, text=now.strftime("%I:%M %p"), fill="white" if state == "sleep" else "black", font=("Arial", 24, "bold"), tags="clock")
+        canvas.create_text(400, 460, text=get_cached_weather(), fill="white" if state == "sleep" else "black", font=("Arial", 16), tags="weather")
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
 def update_clock():
     now = datetime.now()
     canvas.delete("clock")
-    fill_color = "white" if current_state == "sleep" else "black"
-    canvas.create_text(400, 440, text=now.strftime("%I:%M %p"), fill=fill_color, font=("Arial", 24, "bold"), tags="clock")
+    canvas.delete("weather")
+    if current_state != "alarm":
+        fill_color = "white" if current_state == "sleep" else "black"
+        canvas.create_text(400, 440, text=now.strftime("%I:%M %p"), fill=fill_color, font=("Arial", 24, "bold"), tags="clock")
+        canvas.create_text(400, 460, text=get_cached_weather(), fill=fill_color, font=("Arial", 16), tags="weather")
     root.after(1000, update_clock)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
@@ -109,6 +117,19 @@ def fade_to_state(new_state):
 def set_state(state):
     if state != current_state:
         fade_to_state(state)
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
+def get_cached_weather():
+    global cached_weather, last_weather_fetch
+    now = time.time()
+    if now - last_weather_fetch > 600:  # 600 seconds = 10 minutes
+        from weather import get_weather
+        data = get_weather()
+        if data:
+            cached_weather = f"{data['temp']}°F  {data['description'].title()}"
+        last_weather_fetch = now
+    return cached_weather
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
