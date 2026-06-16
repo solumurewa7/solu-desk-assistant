@@ -7,7 +7,7 @@ import os
 
 SCREEN_W = 800
 SCREEN_H = 480
-FACE_SIZE = 300
+FACE_SIZE = 450
 
 FACE_FILES = {
     "sleep":  "assets/sleep.png",
