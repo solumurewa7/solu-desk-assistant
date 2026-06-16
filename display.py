@@ -91,23 +91,32 @@ def update_clock():
 
 def fade_to_state(new_state):
     global current_state
-    old_img = faces[current_state].convert("RGBA")
-    new_img = faces[new_state].convert("RGBA")
-    old_bg = get_background_color(current_state)
-    new_bg = get_background_color(new_state)
+    old_bg_color = get_background_color(current_state)
+    new_bg_color = get_background_color(new_state)
+
+    # composite faces onto their backgrounds before blending
+    old_base = Image.new("RGBA", (FACE_SIZE, FACE_SIZE), old_bg_color)
+    old_base.paste(faces[current_state], (0, 0), faces[current_state])
+    old_img = old_base.convert("RGB")
+
+    new_base = Image.new("RGBA", (FACE_SIZE, FACE_SIZE), new_bg_color)
+    new_base.paste(faces[new_state], (0, 0), faces[new_state])
+    new_img = new_base.convert("RGB")
+
+    old_bg = old_bg_color
+    new_bg = new_bg_color
 
     for i in range(15):
         alpha = i / 14
-        blended_face = Image.blend(old_img.convert("RGB"), new_img.convert("RGB"), alpha)
-        
-        # blend background colors manually
+        blended_face = Image.blend(old_img, new_img, alpha)
+
         old_r, old_g, old_b = int(old_bg[1:3], 16), int(old_bg[3:5], 16), int(old_bg[5:7], 16)
         new_r, new_g, new_b = int(new_bg[1:3], 16), int(new_bg[3:5], 16), int(new_bg[5:7], 16)
         r = int(old_r + (new_r - old_r) * alpha)
         g = int(old_g + (new_g - old_g) * alpha)
         b = int(old_b + (new_b - old_b) * alpha)
         blended_bg = f"#{r:02x}{g:02x}{b:02x}"
-        
+
         bg = Image.new("RGB", (SCREEN_W, SCREEN_H), blended_bg)
         face_x = (SCREEN_W - FACE_SIZE) // 2
         face_y = (SCREEN_H - FACE_SIZE) // 2 - 50
@@ -118,7 +127,7 @@ def fade_to_state(new_state):
         canvas.image = photo
         canvas.update()
         time.sleep(0.03)
-    
+
     current_state = new_state
     draw_state(new_state)
 
