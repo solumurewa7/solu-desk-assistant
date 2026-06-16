@@ -76,7 +76,7 @@ def update_clock():
     now = datetime.now()
     canvas.delete("clock")
     fill_color = "white" if current_state == "sleep" else "black"
-    canvas.create_text(200, 440, text=now.strftime("%I:%M %p"), fill=fill_color, font=("Arial", 24, "bold"), tags="clock")
+    canvas.create_text(400, 440, text=now.strftime("%I:%M %p"), fill=fill_color, font=("Arial", 24, "bold"), tags="clock")
     root.after(1000, update_clock)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
