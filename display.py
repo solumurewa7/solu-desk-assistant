@@ -7,7 +7,7 @@ import os
 
 SCREEN_W = 800
 SCREEN_H = 480
-FACE_SIZE = 450
+FACE_SIZE = 550
 
 FACE_FILES = {
     "sleep":  "assets/sleep.png",
@@ -75,7 +75,8 @@ def draw_state(state):
 def update_clock():
     now = datetime.now()
     canvas.delete("clock")
-    canvas.create_text(200, 440, text=now.strftime("%I:%M %p"), fill="black", font=("Arial", 24, "bold"), tags="clock")
+    fill_color = "white" if current_state == "sleep" else "black"
+    canvas.create_text(200, 440, text=now.strftime("%I:%M %p"), fill=fill_color, font=("Arial", 24, "bold"), tags="clock")
     root.after(1000, update_clock)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
