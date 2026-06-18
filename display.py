@@ -10,7 +10,7 @@ last_weather_fetch = 0
 
 SCREEN_W = 800
 SCREEN_H = 480
-FACE_SIZE = 600
+FACE_SIZE = 520
 
 FACE_FILES = {
     "sleep":  "assets/sleep.png",
@@ -105,7 +105,12 @@ def fade_to_state(new_state):
     face_x = (SCREEN_W - FACE_SIZE) // 2
     face_y = (SCREEN_H - FACE_SIZE) // 2 - 50
 
-    # create ONE persistent image item on the canvas, reused every frame
+    old_shows_text = current_state != "alarm"
+    new_shows_text = new_state != "alarm"
+    time_str = datetime.now().strftime("%I:%M %p")
+    weather_str = get_cached_weather()
+
+    # set up persistent canvas items ONCE — reused every frame via itemconfig
     canvas.delete("all")
     initial_bg = Image.new("RGB", (SCREEN_W, SCREEN_H), old_bg_color)
     initial_bg.paste(old_img, (face_x, face_y))
@@ -113,23 +118,39 @@ def fade_to_state(new_state):
     img_id = canvas.create_image(0, 0, anchor="nw", image=photo)
     canvas.image = photo
 
-    def render_frame(bg_img):
+    old_text_color = "white" if current_state == "sleep" else "black"
+    clock_id = canvas.create_text(250, 450, text=time_str, fill=old_text_color, font=("Arial", 24, "bold"), tags="clock")
+    weather_id = canvas.create_text(550, 450, text=weather_str, fill=old_text_color, font=("Arial", 24), tags="weather")
+    if not old_shows_text:
+        canvas.itemconfig(clock_id, state="hidden")
+        canvas.itemconfig(weather_id, state="hidden")
+
+    def render_frame(bg_img, text_alpha, target_text_color, show_text):
         nonlocal_photo = ImageTk.PhotoImage(bg_img)
         canvas.itemconfig(img_id, image=nonlocal_photo)
-        canvas.image = nonlocal_photo  # keep reference alive
-        canvas.update_idletasks()  # lighter than update(), no flicker
+        canvas.image = nonlocal_photo
+        if show_text:
+            canvas.itemconfig(clock_id, state="normal", fill=target_text_color)
+            canvas.itemconfig(weather_id, state="normal", fill=target_text_color)
+        else:
+            canvas.itemconfig(clock_id, state="hidden")
+            canvas.itemconfig(weather_id, state="hidden")
+        canvas.update_idletasks()
 
-    # PHASE 1: fade old face OUT to old background color
+    new_text_color = "white" if new_state == "sleep" else "black"
+
+    # PHASE 1: fade old face OUT, fade text out too if it was showing
     for i in range(10):
         alpha = i / 9
         old_solid = Image.new("RGB", (FACE_SIZE, FACE_SIZE), old_bg_color)
         blended_face = Image.blend(old_img, old_solid, alpha)
         bg = Image.new("RGB", (SCREEN_W, SCREEN_H), old_bg_color)
         bg.paste(blended_face, (face_x, face_y))
-        render_frame(bg)
+        show_text_now = old_shows_text and alpha < 0.6  # text fades out in first 60% of phase 1
+        render_frame(bg, alpha, old_text_color, show_text_now)
         time.sleep(0.02)
 
-    # PHASE 2: background color crossfades while screen is blank
+    # PHASE 2: background color crossfades, text stays hidden
     old_r, old_g, old_b = int(old_bg_color[1:3], 16), int(old_bg_color[3:5], 16), int(old_bg_color[5:7], 16)
     new_r, new_g, new_b = int(new_bg_color[1:3], 16), int(new_bg_color[3:5], 16), int(new_bg_color[5:7], 16)
     for i in range(8):
@@ -139,10 +160,10 @@ def fade_to_state(new_state):
         b = int(old_b + (new_b - old_b) * alpha)
         blended_bg_color = f"#{r:02x}{g:02x}{b:02x}"
         bg = Image.new("RGB", (SCREEN_W, SCREEN_H), blended_bg_color)
-        render_frame(bg)
+        render_frame(bg, alpha, new_text_color, False)
         time.sleep(0.02)
 
-    # PHASE 3: fade new face IN from new background, with a scale "pop"
+    # PHASE 3: fade new face IN with scale pop, fade text in toward the end
     for i in range(12):
         alpha = i / 11
         new_solid = Image.new("RGB", (FACE_SIZE, FACE_SIZE), new_bg_color)
@@ -154,7 +175,8 @@ def fade_to_state(new_state):
         scaled_x = (SCREEN_W - scaled_size) // 2
         scaled_y = (SCREEN_H - scaled_size) // 2 - 50
         bg.paste(scaled_face, (scaled_x, scaled_y))
-        render_frame(bg)
+        show_text_now = new_shows_text and alpha > 0.4  # text fades in during last 60% of phase 3
+        render_frame(bg, alpha, new_text_color, show_text_now)
         time.sleep(0.02)
 
     current_state = new_state
