@@ -219,7 +219,7 @@ def render_loop():
             if reminder_msg_items:
                 canvas.itemconfig(reminder_msg_items[0], text=reminder_data.get("message", ""), fill=reminder_msg_color)
             else:
-                canvas.create_text(SCREEN_W * 0.62, 235, anchor="nw", text=reminder_data.get("message", ""), fill=reminder_msg_color, font=("Rubik Light", 22), tags="reminder_message", width=int(SCREEN_W * 0.33))
+                canvas.create_text(SCREEN_W * 0.62, 260, anchor="nw", text=reminder_data.get("message", ""), fill=reminder_msg_color, font=("Rubik Light", 22), tags="reminder_message", width=int(SCREEN_W * 0.33))
 
 
         # smoothly move info_fade_progress toward the target each frame

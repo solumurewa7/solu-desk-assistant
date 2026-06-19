@@ -101,29 +101,12 @@ REMINDER_ASK_TIME = [
     "Got it. What time?",
 ]
 
-# Step 3 — Solu asks about alarm
-REMINDER_ASK_ALARM = [
-    "Do you want an alarm with that?",
-    "Want me to attach an alarm to that?",
-    "Should I add an alarm, or just a reminder?",
-    "Alarm with that, or no?",
-]
 
-# Step 4a — Reminder confirmed, no alarm
 def reminder_confirmed(message, time):
-    return f"Reminder set. {message} at {time}."
+    return f"Reminder set for {time}. {message}. I'll make sure you hear it."
 
-# Step 4b — Reminder confirmed, with alarm
-def reminder_confirmed_alarm(message, time):
-    return f"Reminder set for {time} with an alarm. {message}. I'll make sure you hear it."
-
-# Step 4c — Reminder confirmed, added to Google Calendar
 def reminder_confirmed_calendar(message, time):
-    return f"Reminder set for {time} and added to your Google Calendar. {message}. You'll see it on your phone too."
-
-# Step 4d — Reminder confirmed, alarm AND Google Calendar
-def reminder_confirmed_alarm_calendar(message, time):
-    return f"Done. {message} at {time}, alarm attached, and added to your Google Calendar."
+    return f"Done. {message} at {time}, and added to your Google Calendar. You'll see it on your phone too."
 
 # Snooze
 REMINDER_SNOOZED = [
@@ -206,7 +189,7 @@ CREATOR_RESPONSES = [
 CAPABILITIES_RESPONSES = [
     "Weather, reminders, time, date, and general conversation. Ask me something.",
     "I can check the weather, set reminders, tell you the time, and talk. What do you need?",
-    "Weather updates, reminders with alarms, Google Calendar integration, time and date. Go ahead.",
+    "Weather updates, reminders, Google Calendar integration, time and date. Go ahead.",
 ]
 
 

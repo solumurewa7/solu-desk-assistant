@@ -22,7 +22,7 @@ def save_reminders(reminders):
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
-def add_reminder(message, date, time, alarm, calendar):
+def add_reminder(message, date, time, calendar):
     loaded_reminders = load_reminders()
     id = 1
     reminder_date = datetime.strptime(date, "%Y-%m-%d")
@@ -30,7 +30,7 @@ def add_reminder(message, date, time, alarm, calendar):
         return False  # can't set a reminder in the past
     if len(loaded_reminders) > 0:
         id = loaded_reminders[len(loaded_reminders) - 1]["id"] + 1
-    reminder = {"id": id, "date": date, "time":time, "message": message, "alarm": alarm, "calendar": calendar, "completed": False, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S") }
+    reminder = {"id": id, "date": date, "time":time, "message": message, "calendar": calendar, "completed": False, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S") }
     loaded_reminders.append(reminder)
     save_reminders(loaded_reminders)
     return True
@@ -117,7 +117,7 @@ def delete_reminder(id):
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
-VALID_FIELDS = ["message", "date", "time", "alarm", "calendar"]
+VALID_FIELDS = ["message", "date", "time", "calendar"]
 
 def edit_reminder(id, field, new_value):
     reminders = load_reminders()
