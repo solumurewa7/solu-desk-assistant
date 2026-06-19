@@ -98,7 +98,6 @@ def get_breathing_scale():
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
 def render_loop():
-def render_loop():
     global current_state, transition_from_state, transition_start_time
     
     cached_orb_images = {}  # cached gradient+glow image per state, generated once each
