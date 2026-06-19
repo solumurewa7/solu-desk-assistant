@@ -331,10 +331,16 @@ def interpolate_color(color_a, color_b, progress):
 
 def set_orb_position(x_ratio):
     global orb_target_x_ratio
-    orb_target_x_ratio = x_ratio
+    safe_min = get_safe_min_x_ratio()
+    orb_target_x_ratio = max(x_ratio, safe_min)  # never let it go further left than the safe boundary
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+
+def get_safe_min_x_ratio():
+    glow_radius = (ORB_SIZE * 1.7) / 2  # half-width of the orb including its glow halo
+    min_pixel_x = glow_radius + 10  # 10px safety margin
+    return min_pixel_x / SCREEN_W
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
