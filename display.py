@@ -205,25 +205,26 @@ def render_loop():
             reminder_time_color = interpolate_color(COLOR_BG, COLOR_PRIMARY_TEXT, reminder_fade_progress)
             reminder_msg_color = interpolate_color(COLOR_BG, COLOR_SECONDARY_TEXT, reminder_fade_progress)
             
-            # format the reminder's stored time (e.g. "14:30") into a friendlier 12-hour display
+            visible_state = "normal" if reminder_fade_progress > 0.0 else "hidden"
+            
             raw_time = reminder_data.get("time", "")
             try:
                 parsed_time = datetime.strptime(raw_time, "%H:%M")
                 display_time = parsed_time.strftime("%-I:%M %p")
             except ValueError:
-                display_time = raw_time  # fallback if format doesn't match, just show it raw
+                display_time = raw_time
             
             reminder_time_items = canvas.find_withtag("reminder_time")
             if reminder_time_items:
-                canvas.itemconfig(reminder_time_items[0], text=display_time, fill=reminder_time_color)
+                canvas.itemconfig(reminder_time_items[0], text=display_time, fill=reminder_time_color, state=visible_state)
             else:
-                canvas.create_text(SCREEN_W * 0.62, 180, anchor="nw", text=display_time, fill=reminder_time_color, font=("Rubik Medium", 42), tags="reminder_time")
+                canvas.create_text(SCREEN_W * 0.62, 180, anchor="nw", text=display_time, fill=reminder_time_color, font=("Rubik Medium", 42), tags="reminder_time", state=visible_state)
             
             reminder_msg_items = canvas.find_withtag("reminder_message")
             if reminder_msg_items:
-                canvas.itemconfig(reminder_msg_items[0], text=reminder_data.get("message", ""), fill=reminder_msg_color)
+                canvas.itemconfig(reminder_msg_items[0], text=reminder_data.get("message", ""), fill=reminder_msg_color, state=visible_state)
             else:
-                canvas.create_text(SCREEN_W * 0.62, 260, anchor="nw", text=reminder_data.get("message", ""), fill=reminder_msg_color, font=("Rubik Light", 22), tags="reminder_message", width=int(SCREEN_W * 0.33))
+                canvas.create_text(SCREEN_W * 0.62, 260, anchor="nw", text=reminder_data.get("message", ""), fill=reminder_msg_color, font=("Rubik Light", 22), tags="reminder_message", width=int(SCREEN_W * 0.33), state=visible_state)
 
 
         # smoothly move info_fade_progress toward the target each frame
