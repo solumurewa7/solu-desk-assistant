@@ -164,19 +164,51 @@ def render_loop():
         canvas.image = photo
 
         date_str = datetime.now().strftime("%B %d")
-        weather_str = get_cached_weather()
-        
         date_items = canvas.find_withtag("date_text")
         if date_items:
             canvas.itemconfig(date_items[0], text=date_str)
         else:
-            canvas.create_text(20, 20, anchor="nw", text=date_str, fill="white", font=("Rubik", 20, "bold"), tags="date_text")
+            canvas.create_text(20, 20, anchor="nw", text=date_str, fill="white", font=("Rubik Medium", 26), tags="date_text")
         
-        weather_items = canvas.find_withtag("weather_text")
-        if weather_items:
-            canvas.itemconfig(weather_items[0], text=weather_str)
+        weather_data_str = get_cached_weather()  # e.g. "76°F  Cloudy"
+        
+        weather_icons = {
+            "clear": "☀️", "sunny": "☀️",
+            "cloud": "☁️", "overcast": "☁️",
+            "rain": "🌧️", "drizzle": "🌦️",
+            "storm": "⛈️", "thunder": "⛈️",
+            "snow": "❄️",
+            "fog": "🌫️", "mist": "🌫️", "haze": "🌫️",
+            "wind": "💨",
+        }
+        
+        icon = "🌡️"  # fallback icon if nothing matches
+        lower_desc = weather_data_str.lower()
+        for keyword, emoji in weather_icons.items():
+            if keyword in lower_desc:
+                icon = emoji
+                break
+        
+
+        temp_number = weather_data_str.split("°")[0] if "°" in weather_data_str else "--"
+        temp_display = f"{temp_number}° {icon}"
+        
+
+        weather_desc = weather_data_str.split("  ", 1)[1] if "  " in weather_data_str else ""
+        
+        temp_items = canvas.find_withtag("temp_text")
+        if temp_items:
+            canvas.itemconfig(temp_items[0], text=temp_display)
         else:
-            canvas.create_text(SCREEN_W - 20, 20, anchor="ne", text=weather_str, fill="white", font=("Rubik", 20, "bold"), tags="weather_text")
+            canvas.create_text(SCREEN_W - 20, 18, anchor="ne", text=temp_display, fill="white", font=("Rubik Medium", 30), tags="temp_text")
+        
+        desc_items = canvas.find_withtag("desc_text")
+        if desc_items:
+            canvas.itemconfig(desc_items[0], text=weather_desc)
+        else:
+            canvas.create_text(SCREEN_W - 20, 52, anchor="ne", text=weather_desc, fill="#a0a0a0", font=("Rubik Light", 16), tags="desc_text")
+
+
         time.sleep(0.02)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
