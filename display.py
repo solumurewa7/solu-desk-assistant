@@ -163,7 +163,7 @@ def render_loop():
         
         # ease the orb's horizontal position toward its target, same easing technique as the info panel fade
         global orb_current_x_ratio
-        orb_current_x_ratio += (orb_target_x_ratio - orb_current_x_ratio) * 0.08
+        orb_current_x_ratio += (orb_target_x_ratio - orb_current_x_ratio) * 0.12
         
         frame = Image.new("RGB", (SCREEN_W, SCREEN_H), "#000000")
         paste_x = int(SCREEN_W * orb_current_x_ratio) - (new_size // 2)
@@ -193,23 +193,20 @@ def render_loop():
         # ease the reminder panel's fade progress toward its target, same technique as the info panel
         global reminder_fade_progress
         reminder_target = 1.0 if reminder_panel_visible else 0.0
-        reminder_fade_progress += (reminder_target - reminder_fade_progress) * 0.25
+        reminder_fade_progress += (reminder_target - reminder_fade_progress) * 0.3
         if abs(reminder_fade_progress - reminder_target) < 0.01:
             reminder_fade_progress = reminder_target
         
         global reminder_data
         if not reminder_panel_visible and reminder_fade_progress == 0.0:
             if reminder_data is not None:
-                # explicitly hide these canvas items one final time before clearing the data,
-                # since once reminder_data becomes None, this whole block stops running and
-                # can never update their state/fill again — they'd otherwise freeze at whatever
-                # they last were
                 time_items = canvas.find_withtag("reminder_time")
                 if time_items:
                     canvas.itemconfig(time_items[0], state="hidden")
                 msg_items = canvas.find_withtag("reminder_message")
                 if msg_items:
                     canvas.itemconfig(msg_items[0], state="hidden")
+                set_orb_position(0.5)  # NOW slide the orb back, only once text is confirmed fully faded
             reminder_data = None
         
         if reminder_data is not None:
@@ -410,10 +407,8 @@ def show_reminder(reminder):
 
 def dismiss_reminder():
     global reminder_panel_visible
-    reminder_panel_visible = False  # this triggers the fade-out in render_loop
-    set_orb_position(0.5)
+    reminder_panel_visible = False  # starts the text fade-out
     set_state("idle")
-    # reminder_data itself gets cleared automatically inside render_loop once the fade-out completes
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
