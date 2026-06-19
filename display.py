@@ -38,6 +38,9 @@ COLOR_BG = "#000000"              # the screen background, used as the fade star
 info_fade_progress = 0.0  # 0.0 = fully hidden (background color), 1.0 = fully visible
 orb_target_x_ratio = 0.5  # 0.5 = horizontal center, lower = further left
 orb_current_x_ratio = 0.5  # the actual current position, eases toward the target
+reminder_panel_visible = False
+reminder_data = None
+reminder_fade_progress = 0.0
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -187,6 +190,38 @@ def render_loop():
         
         target_progress = 1.0 if info_panel_visible else 0.0
         
+        # ease the reminder panel's fade progress toward its target, same technique as the info panel
+        global reminder_fade_progress
+        reminder_target = 1.0 if reminder_panel_visible else 0.0
+        reminder_fade_progress += (reminder_target - reminder_fade_progress) * 0.1
+        if abs(reminder_fade_progress - reminder_target) < 0.01:
+            reminder_fade_progress = reminder_target
+        
+        if reminder_data is not None:
+            reminder_time_color = interpolate_color(COLOR_BG, COLOR_PRIMARY_TEXT, reminder_fade_progress)
+            reminder_msg_color = interpolate_color(COLOR_BG, COLOR_SECONDARY_TEXT, reminder_fade_progress)
+            
+            # format the reminder's stored time (e.g. "14:30") into a friendlier 12-hour display
+            raw_time = reminder_data.get("time", "")
+            try:
+                parsed_time = datetime.strptime(raw_time, "%H:%M")
+                display_time = parsed_time.strftime("%-I:%M %p")
+            except ValueError:
+                display_time = raw_time  # fallback if format doesn't match, just show it raw
+            
+            reminder_time_items = canvas.find_withtag("reminder_time")
+            if reminder_time_items:
+                canvas.itemconfig(reminder_time_items[0], text=display_time, fill=reminder_time_color)
+            else:
+                canvas.create_text(SCREEN_W * 0.62, 180, anchor="nw", text=display_time, fill=reminder_time_color, font=("Rubik Medium", 42), tags="reminder_time")
+            
+            reminder_msg_items = canvas.find_withtag("reminder_message")
+            if reminder_msg_items:
+                canvas.itemconfig(reminder_msg_items[0], text=reminder_data.get("message", ""), fill=reminder_msg_color)
+            else:
+                canvas.create_text(SCREEN_W * 0.62, 235, anchor="nw", text=reminder_data.get("message", ""), fill=reminder_msg_color, font=("Rubik Light", 22), tags="reminder_message", width=int(SCREEN_W * 0.33))
+
+
         # smoothly move info_fade_progress toward the target each frame
         # this is a simple "ease toward target" — moves a fraction of the remaining distance each frame
         fade_speed = 0.15  # higher = faster fade, lower = slower/smoother
@@ -344,6 +379,11 @@ def get_safe_min_x_ratio():
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def show_reminder(reminder):
+    global reminder_data, reminder_panel_visible
+    reminder_data = reminder
+    reminder_panel_visible = True
+    set_orb_position(0.2)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
