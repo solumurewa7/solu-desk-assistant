@@ -193,7 +193,7 @@ def render_loop():
         # ease the reminder panel's fade progress toward its target, same technique as the info panel
         global reminder_fade_progress
         reminder_target = 1.0 if reminder_panel_visible else 0.0
-        reminder_fade_progress += (reminder_target - reminder_fade_progress) * 0.1
+        reminder_fade_progress += (reminder_target - reminder_fade_progress) * 0.25
         if abs(reminder_fade_progress - reminder_target) < 0.01:
             reminder_fade_progress = reminder_target
         
