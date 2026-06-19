@@ -36,6 +36,8 @@ COLOR_PRIMARY_TEXT = "#c0c0c0"    # lighter gray — time, temp number
 COLOR_SECONDARY_TEXT = "#707070"  # darker gray — date, weather description
 COLOR_BG = "#000000"              # the screen background, used as the fade starting point
 info_fade_progress = 0.0  # 0.0 = fully hidden (background color), 1.0 = fully visible
+orb_target_x_ratio = 0.5  # 0.5 = horizontal center, lower = further left
+orb_current_x_ratio = 0.5  # the actual current position, eases toward the target
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -156,8 +158,12 @@ def render_loop():
         new_size = int(base_orb.width * scale)
         scaled_orb = base_orb.resize((new_size, new_size), Image.LANCZOS)
         
+        # ease the orb's horizontal position toward its target, same easing technique as the info panel fade
+        global orb_current_x_ratio
+        orb_current_x_ratio += (orb_target_x_ratio - orb_current_x_ratio) * 0.08
+        
         frame = Image.new("RGB", (SCREEN_W, SCREEN_H), "#000000")
-        paste_x = (SCREEN_W - new_size) // 2
+        paste_x = int(SCREEN_W * orb_current_x_ratio) - (new_size // 2)
         paste_y = (SCREEN_H - new_size) // 2
         frame.paste(scaled_orb, (paste_x, paste_y), scaled_orb)
         
@@ -320,6 +326,27 @@ def interpolate_color(color_a, color_b, progress):
     g = int(rgb_a[1] + (rgb_b[1] - rgb_a[1]) * progress)
     b = int(rgb_a[2] + (rgb_b[2] - rgb_a[2]) * progress)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
+def set_orb_position(x_ratio):
+    global orb_target_x_ratio
+    orb_target_x_ratio = x_ratio
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------
+
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
