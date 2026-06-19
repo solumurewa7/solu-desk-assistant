@@ -163,14 +163,24 @@ def render_loop():
             canvas.create_image(0, 0, anchor="nw", image=photo, tags="orb_img")
         canvas.image = photo
 
+
+        time_str = datetime.now().strftime("%I:%M %p")
+        time_items = canvas.find_withtag("time_text")
+        if time_items:
+            canvas.itemconfig(time_items[0], text=time_str)
+        else:
+            canvas.create_text(20, 14, anchor="nw", text=time_str, fill="white", font=("Rubik Medium", 38), tags="time_text")
+        
+        # date — subheading below time, with clear breathing room between them
         date_str = datetime.now().strftime("%B %d")
         date_items = canvas.find_withtag("date_text")
         if date_items:
             canvas.itemconfig(date_items[0], text=date_str)
         else:
-            canvas.create_text(20, 20, anchor="nw", text=date_str, fill="white", font=("Rubik Medium", 26), tags="date_text")
+            canvas.create_text(20, 64, anchor="nw", text=date_str, fill="#a0a0a0", font=("Rubik Light", 18), tags="date_text")
         
-        weather_data_str = get_cached_weather()  # e.g. "76°F  Cloudy"
+        # temperature number — top-right, bigger now
+        weather_data_str = get_cached_weather()
         
         weather_icons = {
             "clear": "☀️", "sunny": "☀️",
@@ -182,31 +192,29 @@ def render_loop():
             "wind": "💨",
         }
         
-        icon = "🌡️"  # fallback icon if nothing matches
+        icon = "🌡️"
         lower_desc = weather_data_str.lower()
         for keyword, emoji in weather_icons.items():
             if keyword in lower_desc:
                 icon = emoji
                 break
         
-
         temp_number = weather_data_str.split("°")[0] if "°" in weather_data_str else "--"
         temp_display = f"{temp_number}° {icon}"
-        
-
         weather_desc = weather_data_str.split("  ", 1)[1] if "  " in weather_data_str else ""
         
         temp_items = canvas.find_withtag("temp_text")
         if temp_items:
             canvas.itemconfig(temp_items[0], text=temp_display)
         else:
-            canvas.create_text(SCREEN_W - 20, 18, anchor="ne", text=temp_display, fill="white", font=("Rubik Medium", 30), tags="temp_text")
+            canvas.create_text(SCREEN_W - 20, 14, anchor="ne", text=temp_display, fill="white", font=("Rubik Medium", 38), tags="temp_text")
         
+        # weather description — pushed down further below the temp number, more breathing room
         desc_items = canvas.find_withtag("desc_text")
         if desc_items:
             canvas.itemconfig(desc_items[0], text=weather_desc)
         else:
-            canvas.create_text(SCREEN_W - 20, 52, anchor="ne", text=weather_desc, fill="#a0a0a0", font=("Rubik Light", 16), tags="desc_text")
+            canvas.create_text(SCREEN_W - 20, 64, anchor="ne", text=weather_desc, fill="#a0a0a0", font=("Rubik Light", 16), tags="desc_text")
 
 
         time.sleep(0.02)
