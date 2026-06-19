@@ -41,6 +41,11 @@ orb_current_x_ratio = 0.5  # the actual current position, eases toward the targe
 reminder_panel_visible = False
 reminder_data = None
 reminder_fade_progress = 0.0
+touch_pulse_active = False
+touch_pulse_start_time = 0
+TOUCH_PULSE_DURATION = 0.4  # quick — under half a second
+TOUCH_PULSE_COOLDOWN = 0.5  # minimum time between pulses, prevents spam
+last_touch_pulse_time = 0
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -157,7 +162,7 @@ def render_loop():
             base_orb = cached_orb_images[state]
         
         # apply breathing scale on top of whatever orb we ended up with (steady state or mid-blend)
-        scale = get_breathing_scale()
+        scale = get_breathing_scale() + get_touch_pulse_boost()
         new_size = int(base_orb.width * scale)
         scaled_orb = base_orb.resize((new_size, new_size), Image.LANCZOS)
         
@@ -355,14 +360,22 @@ def get_cached_weather():
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
 def on_screen_tap(event):
-    global info_panel_visible, info_panel_show_time
+    global info_panel_visible, info_panel_show_time, touch_pulse_active, touch_pulse_start_time, last_touch_pulse_time
     
     if reminder_panel_visible:
-        # if a reminder is currently showing, any tap dismisses it instead of revealing info
         dismiss_reminder()
-    else:
-        info_panel_visible = True
-        info_panel_show_time = time.time()
+        return
+    
+    # check if this tap landed on the orb specifically, separate from the info-panel-reveal logic
+    if is_tap_on_orb(event.x, event.y):
+        now = time.time()
+        if now - last_touch_pulse_time > TOUCH_PULSE_COOLDOWN:  # prevent spam-tapping from stacking pulses
+            touch_pulse_active = True
+            touch_pulse_start_time = now
+            last_touch_pulse_time = now
+    
+    info_panel_visible = True
+    info_panel_show_time = time.time()
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -412,9 +425,40 @@ def dismiss_reminder():
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def is_tap_on_orb(event_x, event_y):
+    # convert the orb's current x-ratio back into actual pixel coordinates
+    orb_center_x = SCREEN_W * orb_current_x_ratio
+    orb_center_y = SCREEN_H // 2
+    
+    # use the orb's base size with some generous margin, since breathing scale only changes it slightly
+    tap_radius = (ORB_SIZE / 2) * 1.3  # 30% extra margin makes it easier to actually hit
+    
+    distance = math.sqrt((event_x - orb_center_x) ** 2 + (event_y - orb_center_y) ** 2)
+    return distance <= tap_radius
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def get_touch_pulse_boost():
+    global touch_pulse_active
+    
+    if not touch_pulse_active:
+        return 0.0  # no boost at all
+    
+    elapsed = time.time() - touch_pulse_start_time
+    
+    if elapsed >= TOUCH_PULSE_DURATION:
+        touch_pulse_active = False  # pulse finished, turn it off
+        return 0.0
+    
+    # progress goes 0.0 to 1.0 across the pulse duration
+    progress = elapsed / TOUCH_PULSE_DURATION
+    
+    # use a sine curve so it eases up quickly then back down smoothly, rather than a linear spike
+    # sin(progress * pi) starts at 0, peaks at 1.0 in the middle, returns to 0 at the end
+    boost_curve = math.sin(progress * math.pi)
+    
+    max_boost = 0.06  # how much extra size/brightness at the absolute peak of the pulse
+    return boost_curve * max_boost
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
