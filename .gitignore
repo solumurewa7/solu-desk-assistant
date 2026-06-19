@@ -2,8 +2,6 @@
 __pycache__/
 *.pyc
 data/
-*.mp3
-*.wav
 config.py
 credentials.json
 token.json
