@@ -27,6 +27,8 @@ breathing_thread = None
 transition_from_state = None
 transition_start_time = 0
 TRANSITION_DURATION = 0.6  # half a second crossfade, adjustable
+cached_weather = "Loading weather..."
+last_weather_fetch = 0
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -160,8 +162,21 @@ def render_loop():
         else:
             canvas.create_image(0, 0, anchor="nw", image=photo, tags="orb_img")
         canvas.image = photo
+
+        date_str = datetime.now().strftime("%B %d")
+        weather_str = get_cached_weather()
         
-        canvas.update_idletasks()
+        date_items = canvas.find_withtag("date_text")
+        if date_items:
+            canvas.itemconfig(date_items[0], text=date_str)
+        else:
+            canvas.create_text(20, 20, anchor="nw", text=date_str, fill="white", font=("Rubik", 20, "bold"), tags="date_text")
+        
+        weather_items = canvas.find_withtag("weather_text")
+        if weather_items:
+            canvas.itemconfig(weather_items[0], text=weather_str)
+        else:
+            canvas.create_text(SCREEN_W - 20, 20, anchor="ne", text=weather_str, fill="white", font=("Rubik", 20, "bold"), tags="weather_text")
         time.sleep(0.02)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
@@ -201,6 +216,17 @@ def set_state(state):
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def get_cached_weather():
+    global cached_weather, last_weather_fetch
+    now = time.time()
+    # only fetch from the API every 10 minutes — calling it every frame would hammer OpenWeatherMap for no reason
+    if now - last_weather_fetch > 600:
+        from weather import get_weather
+        data = get_weather()
+        if data:
+            cached_weather = f"{data['temp']}°F  {data['description'].title()}"
+        last_weather_fetch = now
+    return cached_weather
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
