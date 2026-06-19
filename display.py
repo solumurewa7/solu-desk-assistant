@@ -197,6 +197,10 @@ def render_loop():
         if abs(reminder_fade_progress - reminder_target) < 0.01:
             reminder_fade_progress = reminder_target
         
+        global reminder_data
+        if not reminder_panel_visible and reminder_fade_progress == 0.0:
+            reminder_data = None
+        
         if reminder_data is not None:
             reminder_time_color = interpolate_color(COLOR_BG, COLOR_PRIMARY_TEXT, reminder_fade_progress)
             reminder_msg_color = interpolate_color(COLOR_BG, COLOR_SECONDARY_TEXT, reminder_fade_progress)
@@ -343,8 +347,13 @@ def get_cached_weather():
 
 def on_screen_tap(event):
     global info_panel_visible, info_panel_show_time
-    info_panel_visible = True
-    info_panel_show_time = time.time()
+    
+    if reminder_panel_visible:
+        # if a reminder is currently showing, any tap dismisses it instead of revealing info
+        dismiss_reminder()
+    else:
+        info_panel_visible = True
+        info_panel_show_time = time.time()
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -387,6 +396,12 @@ def show_reminder(reminder):
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def dismiss_reminder():
+    global reminder_panel_visible
+    reminder_panel_visible = False  # this triggers the fade-out in render_loop
+    set_orb_position(0.5)
+    set_state("idle")
+    # reminder_data itself gets cleared automatically inside render_loop once the fade-out completes
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
