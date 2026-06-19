@@ -68,11 +68,14 @@ def build_system_prompt():
 def ask_gemini(prompt, history):
     try:
         system_prompt = build_system_prompt()
+        search_tool = types.Tool(google_search=types.GoogleSearch())
+        
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
+                tools=[search_tool],
             )
         )
         return response.text
