@@ -199,6 +199,17 @@ def render_loop():
         
         global reminder_data
         if not reminder_panel_visible and reminder_fade_progress == 0.0:
+            if reminder_data is not None:
+                # explicitly hide these canvas items one final time before clearing the data,
+                # since once reminder_data becomes None, this whole block stops running and
+                # can never update their state/fill again — they'd otherwise freeze at whatever
+                # they last were
+                time_items = canvas.find_withtag("reminder_time")
+                if time_items:
+                    canvas.itemconfig(time_items[0], state="hidden")
+                msg_items = canvas.find_withtag("reminder_message")
+                if msg_items:
+                    canvas.itemconfig(msg_items[0], state="hidden")
             reminder_data = None
         
         if reminder_data is not None:
