@@ -100,9 +100,6 @@ def render_loop():
     last_state = None
     cached_orb_images = {}
     
-    frame_count = 0
-    fps_timer = time.time()
-    
     while True:
         state = current_state
         
@@ -133,16 +130,7 @@ def render_loop():
         canvas.image = photo
         
         canvas.update_idletasks()
-        
-        # FPS counter — prints actual achieved frame rate every 2 seconds
-        frame_count += 1
-        if time.time() - fps_timer >= 2:
-            fps = frame_count / (time.time() - fps_timer)
-            print(f"FPS: {fps:.1f}")
-            frame_count = 0
-            fps_timer = time.time()
-        
-        time.sleep(0.01)  # lower floor — let's see the real max the Pi can sustain
+        time.sleep(0.02)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
