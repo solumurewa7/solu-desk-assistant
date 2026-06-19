@@ -24,6 +24,9 @@ canvas = None
 root = None
 breathing_running = False
 breathing_thread = None
+transition_from_state = None
+transition_start_time = 0
+TRANSITION_DURATION = 0.6  # half a second crossfade, adjustable
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -95,22 +98,52 @@ def get_breathing_scale():
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
 def render_loop():
-    global current_state
+def render_loop():
+    global current_state, transition_from_state, transition_start_time
     
-    last_state = None
-    cached_orb_images = {}
+    cached_orb_images = {}  # cached gradient+glow image per state, generated once each
     
     while True:
         state = current_state
         
+        # make sure we have a cached orb image for this state
         if state not in cached_orb_images:
             core_color, edge_color = ORB_COLORS[state]
             orb = generate_orb(core_color, edge_color)
             glowing_orb = add_glow(orb, core_color)
             cached_orb_images[state] = glowing_orb
         
-        base_orb = cached_orb_images[state]
+        # check if we're in the middle of a transition between two states
+        if transition_from_state is not None:
+            elapsed = time.time() - transition_start_time
+            progress = min(elapsed / TRANSITION_DURATION, 1.0)  # 0.0 to 1.0
+            
+            if progress >= 1.0:
+                # transition finished, clean up and use the new state normally
+                transition_from_state = None
+                base_orb = cached_orb_images[state]
+            else:
+                # still mid-transition — make sure the OLD state's orb is also cached
+                if transition_from_state not in cached_orb_images:
+                    old_core, old_edge = ORB_COLORS[transition_from_state]
+                    old_orb = generate_orb(old_core, old_edge)
+                    old_glowing = add_glow(old_orb, old_core)
+                    cached_orb_images[transition_from_state] = old_glowing
+                
+                old_orb_img = cached_orb_images[transition_from_state]
+                new_orb_img = cached_orb_images[state]
+                
+                # blend the two orb images together based on transition progress
+                # both images need to be the same size and mode for blend to work
+                base_orb = Image.blend(
+                    old_orb_img.convert("RGBA"),
+                    new_orb_img.convert("RGBA"),
+                    progress
+                )
+        else:
+            base_orb = cached_orb_images[state]
         
+        # apply breathing scale on top of whatever orb we ended up with (steady state or mid-blend)
         scale = get_breathing_scale()
         new_size = int(base_orb.width * scale)
         scaled_orb = base_orb.resize((new_size, new_size), Image.LANCZOS)
@@ -153,6 +186,19 @@ def start_display():
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def set_state(state):
+    global current_state, transition_from_state, transition_start_time
+    
+    if state not in ORB_COLORS:
+        print(f"Warning: unknown state '{state}', ignoring")
+        return
+    
+    if state == current_state:
+        return  # already in this state, nothing to do
+    
+    transition_from_state = current_state
+    transition_start_time = time.time()
+    current_state = state
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
