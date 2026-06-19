@@ -29,6 +29,9 @@ transition_start_time = 0
 TRANSITION_DURATION = 0.6  # half a second crossfade, adjustable
 cached_weather = "Loading weather..."
 last_weather_fetch = 0
+info_panel_visible = False
+info_panel_show_time = 0
+INFO_PANEL_DURATION = 5  # seconds before auto-hiding again
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -171,15 +174,20 @@ def render_loop():
         else:
             canvas.create_text(20, 14, anchor="nw", text=time_str, fill="white", font=("Rubik Medium", 38), tags="time_text")
         
-        # date — subheading below time, with clear breathing room between them
+        
+
+        global info_panel_visible
+        if info_panel_visible and (time.time() - info_panel_show_time > INFO_PANEL_DURATION):
+            info_panel_visible = False
+        
+        # date — subheading below time, only shown when info panel is active
         date_str = datetime.now().strftime("%B %d")
         date_items = canvas.find_withtag("date_text")
         if date_items:
-            canvas.itemconfig(date_items[0], text=date_str)
+            canvas.itemconfig(date_items[0], text=date_str, state="normal" if info_panel_visible else "hidden")
         else:
-            canvas.create_text(20, 64, anchor="nw", text=date_str, fill="#a0a0a0", font=("Rubik Light", 18), tags="date_text")
+            canvas.create_text(20, 64, anchor="nw", text=date_str, fill="#a0a0a0", font=("Rubik Light", 18), tags="date_text", state="normal" if info_panel_visible else "hidden")
         
-        # temperature number — top-right, bigger now
         weather_data_str = get_cached_weather()
         
         weather_icons = {
@@ -205,16 +213,15 @@ def render_loop():
         
         temp_items = canvas.find_withtag("temp_text")
         if temp_items:
-            canvas.itemconfig(temp_items[0], text=temp_display)
+            canvas.itemconfig(temp_items[0], text=temp_display, state="normal" if info_panel_visible else "hidden")
         else:
-            canvas.create_text(SCREEN_W - 20, 14, anchor="ne", text=temp_display, fill="white", font=("Rubik Medium", 38), tags="temp_text")
+            canvas.create_text(SCREEN_W - 20, 14, anchor="ne", text=temp_display, fill="white", font=("Rubik Medium", 38), tags="temp_text", state="normal" if info_panel_visible else "hidden")
         
-        # weather description — pushed down further below the temp number, more breathing room
         desc_items = canvas.find_withtag("desc_text")
         if desc_items:
-            canvas.itemconfig(desc_items[0], text=weather_desc)
+            canvas.itemconfig(desc_items[0], text=weather_desc, state="normal" if info_panel_visible else "hidden")
         else:
-            canvas.create_text(SCREEN_W - 20, 64, anchor="ne", text=weather_desc, fill="#a0a0a0", font=("Rubik Light", 16), tags="desc_text")
+            canvas.create_text(SCREEN_W - 20, 64, anchor="ne", text=weather_desc, fill="#a0a0a0", font=("Rubik Light", 16), tags="desc_text", state="normal" if info_panel_visible else "hidden")
 
 
         time.sleep(0.02)
@@ -230,6 +237,7 @@ def start_display():
     
     canvas = tk.Canvas(root, width=SCREEN_W, height=SCREEN_H, bg='black', highlightthickness=0)
     canvas.pack()
+    canvas.bind("<Button-1>", on_screen_tap)
     
     # render_loop runs forever, so it needs its own thread
     # daemon=True means this thread automatically dies when the main program exits
@@ -270,6 +278,10 @@ def get_cached_weather():
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def on_screen_tap(event):
+    global info_panel_visible, info_panel_show_time
+    info_panel_visible = True
+    info_panel_show_time = time.time()
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
