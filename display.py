@@ -164,7 +164,7 @@ def render_loop():
         canvas.image = photo
 
 
-        time_str = datetime.now().strftime("%I:%M %p")
+        time_str = datetime.now().strftime("%-I:%M %p")
         time_items = canvas.find_withtag("time_text")
         if time_items:
             canvas.itemconfig(time_items[0], text=time_str)
