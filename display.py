@@ -338,8 +338,8 @@ def set_orb_position(x_ratio):
 
 
 def get_safe_min_x_ratio():
-    glow_radius = (ORB_SIZE * 1.7) / 2  # half-width of the orb including its glow halo
-    min_pixel_x = glow_radius + 10  # 10px safety margin
+    orb_radius = ORB_SIZE / 2  # half-width of just the solid orb, not including glow
+    min_pixel_x = orb_radius + 10  # 10px safety margin around the solid orb only
     return min_pixel_x / SCREEN_W
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
