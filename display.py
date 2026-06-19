@@ -95,19 +95,17 @@ def get_breathing_scale():
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
 def render_loop():
-    # this function runs forever on its own thread, redrawing the orb every frame
-    # it handles BOTH the constant breathing animation AND responds to state changes
-    
     global current_state
     
     last_state = None
-    cached_orb_images = {}  # store the generated orb (gradient+glow) per state so we don't regenerate every frame
+    cached_orb_images = {}
+    
+    frame_count = 0
+    fps_timer = time.time()
     
     while True:
         state = current_state
         
-        # only regenerate the base orb image when the state actually changes
-        # generating gradients is somewhat expensive, we don't want to do it 30+ times a second
         if state not in cached_orb_images:
             core_color, edge_color = ORB_COLORS[state]
             orb = generate_orb(core_color, edge_color)
@@ -116,18 +114,15 @@ def render_loop():
         
         base_orb = cached_orb_images[state]
         
-        # apply the breathing scale to the cached orb image
         scale = get_breathing_scale()
         new_size = int(base_orb.width * scale)
         scaled_orb = base_orb.resize((new_size, new_size), Image.LANCZOS)
         
-        # paste the scaled orb onto a full black screen-sized background, centered
         frame = Image.new("RGB", (SCREEN_W, SCREEN_H), "#000000")
         paste_x = (SCREEN_W - new_size) // 2
         paste_y = (SCREEN_H - new_size) // 2
         frame.paste(scaled_orb, (paste_x, paste_y), scaled_orb)
         
-        # convert to a tkinter-displayable image and update the canvas
         photo = ImageTk.PhotoImage(frame)
         
         existing = canvas.find_withtag("orb_img")
@@ -138,7 +133,16 @@ def render_loop():
         canvas.image = photo
         
         canvas.update_idletasks()
-        time.sleep(0.03)  # roughly 30 frames per second
+        
+        # FPS counter — prints actual achieved frame rate every 2 seconds
+        frame_count += 1
+        if time.time() - fps_timer >= 2:
+            fps = frame_count / (time.time() - fps_timer)
+            print(f"FPS: {fps:.1f}")
+            frame_count = 0
+            fps_timer = time.time()
+        
+        time.sleep(0.01)  # lower floor — let's see the real max the Pi can sustain
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
