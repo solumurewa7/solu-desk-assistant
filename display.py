@@ -32,6 +32,10 @@ last_weather_fetch = 0
 info_panel_visible = False
 info_panel_show_time = 0
 INFO_PANEL_DURATION = 5  # seconds before auto-hiding again
+COLOR_PRIMARY_TEXT = "#c0c0c0"    # lighter gray — time, temp number
+COLOR_SECONDARY_TEXT = "#707070"  # darker gray — date, weather description
+COLOR_BG = "#000000"              # the screen background, used as the fade starting point
+info_fade_progress = 0.0  # 0.0 = fully hidden (background color), 1.0 = fully visible
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -167,26 +171,44 @@ def render_loop():
         canvas.image = photo
 
 
-        time_str = datetime.now().strftime("%-I:%M %p")
-        time_items = canvas.find_withtag("time_text")
-        if time_items:
-            canvas.itemconfig(time_items[0], text=time_str)
-        else:
-            canvas.create_text(20, 14, anchor="nw", text=time_str, fill="white", font=("Rubik Medium", 38), tags="time_text")
         
         
 
-        global info_panel_visible
+       # determine target fade progress: 1.0 if panel should be visible, 0.0 if hidden
+        global info_panel_visible, info_fade_progress
         if info_panel_visible and (time.time() - info_panel_show_time > INFO_PANEL_DURATION):
             info_panel_visible = False
         
-        # date — subheading below time, only shown when info panel is active
+        target_progress = 1.0 if info_panel_visible else 0.0
+        
+        # smoothly move info_fade_progress toward the target each frame
+        # this is a simple "ease toward target" — moves a fraction of the remaining distance each frame
+        fade_speed = 0.15  # higher = faster fade, lower = slower/smoother
+        info_fade_progress += (target_progress - info_fade_progress) * fade_speed
+        
+        # snap to exact 0 or 1 when very close, to avoid floating point drift sitting at like 0.0001 forever
+        if abs(info_fade_progress - target_progress) < 0.01:
+            info_fade_progress = target_progress
+        
+        # calculate the actual displayed colors based on current fade progress
+        time_color = interpolate_color(COLOR_BG, COLOR_PRIMARY_TEXT, info_fade_progress)
+        date_color = interpolate_color(COLOR_BG, COLOR_SECONDARY_TEXT, info_fade_progress)
+        temp_color = interpolate_color(COLOR_BG, COLOR_PRIMARY_TEXT, info_fade_progress)
+        desc_color = interpolate_color(COLOR_BG, COLOR_SECONDARY_TEXT, info_fade_progress)
+        
+        time_str = datetime.now().strftime("%-I:%M %p")
+        time_items = canvas.find_withtag("time_text")
+        if time_items:
+            canvas.itemconfig(time_items[0], text=time_str, fill=time_color)
+        else:
+            canvas.create_text(20, 14, anchor="nw", text=time_str, fill=time_color, font=("Rubik Medium", 38), tags="time_text")
+        
         date_str = datetime.now().strftime("%B %d")
         date_items = canvas.find_withtag("date_text")
         if date_items:
-            canvas.itemconfig(date_items[0], text=date_str, state="normal" if info_panel_visible else "hidden")
+            canvas.itemconfig(date_items[0], text=date_str, fill=date_color)
         else:
-            canvas.create_text(20, 64, anchor="nw", text=date_str, fill="#a0a0a0", font=("Rubik Light", 18), tags="date_text", state="normal" if info_panel_visible else "hidden")
+            canvas.create_text(20, 64, anchor="nw", text=date_str, fill=date_color, font=("Rubik Light", 18), tags="date_text")
         
         weather_data_str = get_cached_weather()
         
@@ -213,15 +235,15 @@ def render_loop():
         
         temp_items = canvas.find_withtag("temp_text")
         if temp_items:
-            canvas.itemconfig(temp_items[0], text=temp_display, state="normal" if info_panel_visible else "hidden")
+            canvas.itemconfig(temp_items[0], text=temp_display, fill=temp_color)
         else:
-            canvas.create_text(SCREEN_W - 20, 14, anchor="ne", text=temp_display, fill="white", font=("Rubik Medium", 38), tags="temp_text", state="normal" if info_panel_visible else "hidden")
+            canvas.create_text(SCREEN_W - 20, 14, anchor="ne", text=temp_display, fill=temp_color, font=("Rubik Medium", 38), tags="temp_text")
         
         desc_items = canvas.find_withtag("desc_text")
         if desc_items:
-            canvas.itemconfig(desc_items[0], text=weather_desc, state="normal" if info_panel_visible else "hidden")
+            canvas.itemconfig(desc_items[0], text=weather_desc, fill=desc_color)
         else:
-            canvas.create_text(SCREEN_W - 20, 64, anchor="ne", text=weather_desc, fill="#a0a0a0", font=("Rubik Light", 16), tags="desc_text", state="normal" if info_panel_visible else "hidden")
+            canvas.create_text(SCREEN_W - 20, 64, anchor="ne", text=weather_desc, fill=desc_color, font=("Rubik Light", 16), tags="desc_text")
 
 
         time.sleep(0.02)
@@ -285,9 +307,19 @@ def on_screen_tap(event):
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def hex_to_rgb(hex_color):
+    return tuple(int(hex_color[i:i+2], 16) for i in (1, 3, 5))
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+def interpolate_color(color_a, color_b, progress):
+    # blends from color_a to color_b based on progress (0.0 to 1.0)
+    rgb_a = hex_to_rgb(color_a)
+    rgb_b = hex_to_rgb(color_b)
+    r = int(rgb_a[0] + (rgb_b[0] - rgb_a[0]) * progress)
+    g = int(rgb_a[1] + (rgb_b[1] - rgb_a[1]) * progress)
+    b = int(rgb_a[2] + (rgb_b[2] - rgb_a[2]) * progress)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
