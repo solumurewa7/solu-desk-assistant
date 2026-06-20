@@ -80,6 +80,9 @@ ORB_COLORS = {
 COLOR_PRIMARY_TEXT = (192, 192, 192)    # #c0c0c0 — time, temp number
 COLOR_SECONDARY_TEXT = (112, 112, 112)  # #707070 — date, weather description
 COLOR_BG = (0, 0, 0)
+STAR_COLOR = (255, 255, 255)  # fixed neutral white — stars no longer follow
+                               # the orb's state color, only the orb and the
+                               # orbiting particles do that now
 
 INFO_PANEL_DURATION = 5       # seconds the info panel stays visible after a tap
 INFO_FADE_SPEED = 0.15        # easing factor, same value confirmed to feel right in tkinter
@@ -313,10 +316,14 @@ class Display:
         core_rgb = self._get_current_core_rgb_for_drawing(now)
 
         # starfield, drawn before the orb so the orb naturally occludes
-        # whatever stars sit behind it
+        # whatever stars sit behind it. Fixed white now (was core_rgb) —
+        # per request, only the orb and the orbiting particles should
+        # carry/crossfade the state color, so stars read as clearly
+        # distinct background elements rather than tinting along with
+        # everything else.
         self.starfield.update(dt, now)
         if self.current_state != "alarm":
-            self.starfield.draw(self.screen, core_rgb, now, alpha_multiplier=1.0)
+            self.starfield.draw(self.screen, STAR_COLOR, now, alpha_multiplier=1.0)
 
         self._draw_orb(now, dt, core_rgb)
         self._update_and_draw_info_panel(now)
