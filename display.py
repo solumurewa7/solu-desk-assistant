@@ -53,6 +53,7 @@ from datetime import datetime
 
 from orb import Orb
 from starfield import Starfield
+from orbit_particles import OrbitSystem, draw_particle_list
 
 # ============================================================================
 # CONSTANTS
@@ -60,8 +61,7 @@ from starfield import Starfield
 
 SCREEN_W = 800
 SCREEN_H = 480
-ORB_SIZE = 340  # checked directly against the real 800x480 screen — fills a
-                 # comfortable amount of height with clean margin top/bottom/sides
+ORB_SIZE = 340  # confirmed final size against the real screen
 
 FONT_PATH = "assets/fonts/Rubik.ttf"
 EMOJI_FONT_PATH = "assets/fonts/NotoColorEmoji.ttf"
@@ -135,6 +135,7 @@ class Display:
 
         self.starfield = Starfield(SCREEN_W, SCREEN_H)
         self.orb = Orb(ORB_SIZE, ORB_COLORS)
+        self.orbit_system = OrbitSystem()
 
         # ---- state machine ----
         self.current_state = "idle"
@@ -317,7 +318,7 @@ class Display:
         if self.current_state != "alarm":
             self.starfield.draw(self.screen, core_rgb, now, alpha_multiplier=1.0)
 
-        self._draw_orb(now, core_rgb)
+        self._draw_orb(now, dt, core_rgb)
         self._update_and_draw_info_panel(now)
         self._update_and_draw_reminder_panel(now)
 
@@ -339,7 +340,7 @@ class Display:
 
         return target_core
 
-    def _draw_orb(self, now, core_rgb):
+    def _draw_orb(self, now, dt, core_rgb):
         state = self.current_state
 
         if self.transition_from_state is not None:
@@ -373,9 +374,26 @@ class Display:
         new_size = int(base_orb.get_width() * scale)
         scaled_orb = pygame.transform.smoothscale(base_orb, (new_size, new_size))
 
-        paste_x = int(SCREEN_W * self.orb_current_x_ratio) - (new_size // 2)
-        paste_y = (SCREEN_H - new_size) // 2
+        orb_center_x = int(SCREEN_W * self.orb_current_x_ratio)
+        orb_center_y = SCREEN_H // 2
+        paste_x = orb_center_x - (new_size // 2)
+        paste_y = orb_center_y - (new_size // 2)
+
+        # orbiting particles: drawn in three passes around the orb blit so
+        # draw order itself produces correct occlusion — particles "behind"
+        # the orb this frame are drawn first (and get covered by the orb),
+        # particles "in front" are drawn last (and sit visibly on top)
+        self.orbit_system.update(dt, state)
+        if state != "alarm":
+            behind, in_front = self.orbit_system.get_split_particles(
+                orb_center_x, orb_center_y, new_size / 2
+            )
+            draw_particle_list(self.screen, behind, core_rgb)
+
         self.screen.blit(scaled_orb, (paste_x, paste_y))
+
+        if state != "alarm":
+            draw_particle_list(self.screen, in_front, core_rgb)
 
     def _update_and_draw_info_panel(self, now):
         if self.info_panel_visible and (now - self.info_panel_show_time > INFO_PANEL_DURATION):
