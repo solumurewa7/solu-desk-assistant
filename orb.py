@@ -72,7 +72,7 @@ def add_glow(orb_surf, size, core_rgb):
     gc = glow_canvas_size // 2
 
     ring_layer = pygame.Surface((glow_canvas_size, glow_canvas_size), pygame.SRCALPHA)
-    outer_r = int(size * 0.545)  # pulled in from 0.60 — shorter reach, glow stays tight to the edge
+    outer_r = int(size * 0.2)  # pulled in from 0.60 — shorter reach, glow stays tight to the edge
     inner_r = int(size * 0.50)   # starts right at the orb's own edge
     ring_steps = 20
     for i in range(ring_steps, -1, -1):
