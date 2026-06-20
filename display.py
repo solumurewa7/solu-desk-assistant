@@ -90,7 +90,7 @@ INFO_FADE_SPEED = 0.15        # easing factor, same value confirmed to feel righ
 REMINDER_FADE_SPEED = 0.3     # faster than the info panel, confirmed snappier dismiss feel
 ORB_POSITION_EASE_SPEED = 0.08  # slower, more deliberate slide for the reminder panel
 
-REMINDER_LEFT_X_RATIO = 0.2   # how far left the orb slides when showing a reminder
+REMINDER_LEFT_X_RATIO = 0.28   # how far left the orb slides when showing a reminder
 CENTER_X_RATIO = 0.5
 
 BREATHING_CYCLE_SECONDS = 4
