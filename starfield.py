@@ -22,7 +22,7 @@ NUM_STARS = 70  # within the agreed 60-80 "balanced" range
 # Depth layers control parallax: farther stars are smaller, dimmer, and drift slower.
 # Each star gets a random depth between 0.0 (far) and 1.0 (near) at creation time.
 MIN_STAR_RADIUS = 1
-MAX_STAR_RADIUS = 3
+MAX_STAR_RADIUS = 2  # shrunk from 3 — stars were reading too big/bold
 
 MIN_DRIFT_SPEED = 2.0   # pixels per second, far stars
 MAX_DRIFT_SPEED = 10.0  # pixels per second, near stars

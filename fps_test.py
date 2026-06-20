@@ -15,6 +15,7 @@ import time
 import random
 
 from starfield import Starfield
+from orbit_particles import OrbitSystem, draw_particle_list
 
 SCREEN_W = 800
 SCREEN_H = 480
@@ -60,24 +61,96 @@ def generate_orb_surface(core_rgb, edge_rgb, size):
     return surf
 
 
+def add_sheen(orb_surf, size, angle, intensity_rgb):
+    """
+    Draws a subtle shifting highlight/sheen on the orb's surface — a soft
+    bright patch that rotates around the orb over time, faking the sense
+    of light catching a curved 3D surface without any real 3D math.
+
+    angle: current rotation angle in radians, driven externally
+    intensity_rgb: the orb's own core color, used to tint the sheen so it
+    reads as "brighter version of this orb" rather than a generic white
+    glare sitting on top.
+    """
+    sheen_surf = pygame.Surface((size, size), pygame.SRCALPHA)
+
+    center = size // 2
+    # the sheen sits near the orb's edge and rotates around it — radius
+    # slightly inside the orb's own radius so it reads as ON the surface
+    sheen_radius = int(center * 0.78)
+    sx = center + math.cos(angle) * sheen_radius
+    sy = center + math.sin(angle) * sheen_radius
+
+    sheen_blob_radius = int(size * 0.22)
+
+    r, g, b = intensity_rgb
+    # push toward white-ish brightness for the sheen itself, but keep some
+    # of the orb's own hue so it doesn't look like a foreign white blob
+    sheen_color = (
+        min(255, int(r + (255 - r) * 0.55)),
+        min(255, int(g + (255 - g) * 0.55)),
+        min(255, int(b + (255 - b) * 0.55)),
+    )
+
+    # soft sheen via the same downscale/upscale blur trick used for the glow
+    small = max(2, sheen_blob_radius // 4)
+    blob = pygame.Surface((sheen_blob_radius * 2, sheen_blob_radius * 2), pygame.SRCALPHA)
+    pygame.draw.circle(blob, (*sheen_color, 200), (sheen_blob_radius, sheen_blob_radius), sheen_blob_radius)
+    shrunk = pygame.transform.smoothscale(blob, (small, small))
+    soft = pygame.transform.smoothscale(shrunk, (sheen_blob_radius * 2, sheen_blob_radius * 2))
+    soft.set_alpha(90)  # subtle, per the "sheen only, no distinct shapes" decision
+
+    sheen_surf.blit(soft, (int(sx - sheen_blob_radius), int(sy - sheen_blob_radius)))
+
+    # clip the sheen to the orb's own circular silhouette so it never spills
+    # outside the orb's edge — done by masking against the orb's alpha
+    mask_surf = orb_surf.copy()
+    mask_surf.blit(sheen_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    # BLEND_RGBA_MULT against the orb keeps the sheen only where the orb's
+    # own alpha is already opaque, so it can't bleed past the circle edge
+
+    result = orb_surf.copy()
+    result.blit(sheen_surf, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+    return result
+
+
+SHEEN_SPEED_MULTIPLIER = {
+    "sleep":  0.15,
+    "idle":   0.4,
+    "speak":  1.2,
+    "joking": 1.1,
+    "think":  1.4,
+    "error":  0.9,
+    "alarm":  0.6,
+}
+
+
 def add_glow(orb_surf, size):
     """
     Soft glow via the downscale -> upscale trick: shrinking and growing a
     surface with smoothscale's bilinear filtering produces a natural blur
-    for free, no custom blur kernel needed. Cheap and idiomatic in Pygame.
+    for free, no custom blur kernel needed.
+
+    Tightened per feedback: the original 1.7x canvas + alpha 110 spread the
+    glow far wider than the orb itself, making it look like a second,
+    fainter orb rather than a rim of light. Pulled the canvas in and the
+    glow layer closer to the orb's actual edge, and dropped the opacity
+    so it reads as a tight halo, not a second circle.
     """
-    glow_canvas_size = int(size * 1.7)
+    glow_canvas_size = int(size * 1.25)  # was 1.7x — much tighter now
     glow_canvas = pygame.Surface((glow_canvas_size, glow_canvas_size), pygame.SRCALPHA)
 
-    # shrink way down, then back up — the resampling itself is the blur
-    small_size = max(4, glow_canvas_size // 8)
+    # the glow layer itself is only slightly bigger than the orb, not 1.3x+ —
+    # this keeps the blur concentrated right at the edge rather than spreading
+    glow_layer_size = int(size * 1.08)
+    small_size = max(4, glow_layer_size // 6)
     shrunk = pygame.transform.smoothscale(orb_surf, (small_size, small_size))
-    blurred = pygame.transform.smoothscale(shrunk, (glow_canvas_size, glow_canvas_size))
+    blurred = pygame.transform.smoothscale(shrunk, (glow_layer_size, glow_layer_size))
 
-    # dim it down so it reads as a soft halo, not a second solid orb
-    blurred.set_alpha(110)
+    blurred.set_alpha(70)  # was 110 — softer so it doesn't look like a second orb
 
-    glow_canvas.blit(blurred, (0, 0))
+    glow_pos_in_canvas = ((glow_canvas_size - glow_layer_size) // 2, (glow_canvas_size - glow_layer_size) // 2)
+    glow_canvas.blit(blurred, glow_pos_in_canvas)
 
     # paste the sharp orb on top, centered
     orb_pos = ((glow_canvas_size - size) // 2, (glow_canvas_size - size) // 2)
@@ -92,14 +165,18 @@ def main():
     clock = pygame.time.Clock()
 
     starfield = Starfield(SCREEN_W, SCREEN_H)
+    orbit_system = OrbitSystem(ORB_SIZE)
 
-    # cache one glowing orb surface per state, generated once
+    # cache one glowing orb surface per state, generated once (base orb + glow,
+    # WITHOUT the sheen baked in — sheen rotates independently every frame
+    # so it can't be cached the same way)
     cached_orbs = {}
     for state, (core, edge) in ORB_COLORS.items():
         orb = generate_orb_surface(core, edge, ORB_SIZE)
         cached_orbs[state] = add_glow(orb, ORB_SIZE)
 
     current_state = "idle"
+    sheen_angle = 0.0
 
     frame_count = 0
     fps_timer = time.time()
@@ -129,7 +206,8 @@ def main():
 
         screen.fill((0, 0, 0))
 
-        # stars drawn first, orb drawn on top -> orb naturally occludes stars behind it
+        # stars and orbit particles drawn first, orb on top -> natural occlusion.
+        # alarm hides both the starfield and the orbiting particles, per plan.
         core_rgb, _ = ORB_COLORS[current_state]
         starfield.update(dt, now)
         if current_state != "alarm":
@@ -143,9 +221,33 @@ def main():
 
         base_orb = cached_orbs[current_state]
         new_size = int(base_orb.get_width() * scale)
-        scaled_orb = pygame.transform.smoothscale(base_orb, (new_size, new_size))
 
-        screen.blit(scaled_orb, (SCREEN_W // 2 - new_size // 2, SCREEN_H // 2 - new_size // 2))
+        # rotate the sheen, speed driven by state, then apply it fresh each frame
+        sheen_speed_mult = SHEEN_SPEED_MULTIPLIER.get(current_state, 0.4)
+        sheen_angle += 0.8 * sheen_speed_mult * dt
+        if sheen_angle > 2 * math.pi:
+            sheen_angle -= 2 * math.pi
+
+        # sheen is applied to the orb at its native (unglowed-canvas) size first,
+        # then we re-glow... actually simpler: apply sheen to the cached
+        # glow-canvas surface directly, since the orb sits centered within it
+        # and the sheen math is relative to that surface's own size
+        orb_with_sheen = add_sheen(base_orb, base_orb.get_width(), sheen_angle, core_rgb)
+        scaled_orb = pygame.transform.smoothscale(orb_with_sheen, (new_size, new_size))
+
+        orb_center_x = SCREEN_W // 2
+        orb_center_y = SCREEN_H // 2
+
+        if current_state != "alarm":
+            orbit_system.update(dt, current_state)
+            behind, in_front = orbit_system.get_split_particles(orb_center_x, orb_center_y)
+
+            draw_particle_list(screen, behind, core_rgb)
+
+        screen.blit(scaled_orb, (orb_center_x - new_size // 2, orb_center_y - new_size // 2))
+
+        if current_state != "alarm":
+            draw_particle_list(screen, in_front, core_rgb)
 
         pygame.display.flip()
 
