@@ -455,6 +455,17 @@ class Display:
         # 4x bigger than the temp text next to it. Scaling it down
         # manually to match the temp text's height fixes this regardless
         # of whatever native size the font happens to return.
+        # NotoColorEmoji ignores the requested point size (confirmed
+        # earlier) AND ignores the requested render color entirely (just
+        # confirmed too: rendering the same glyph with color=(255,255,255)
+        # vs color=(20,20,20) produced byte-identical pixels). That's
+        # exactly why this icon wasn't fading along with everything
+        # else — primary_color was being passed in but silently discarded
+        # by the font itself, so the icon always rendered at full native
+        # brightness no matter what info_fade_progress said. The fix is
+        # applying alpha directly to the rendered SURFACE (which Pygame
+        # does respect, verified directly), rather than relying on the
+        # render() color argument this font doesn't honor.
         icon_raw = self.font_emoji.render(icon, True, primary_color)
         icon_target_height = temp_surf.get_height()
         icon_scale = icon_target_height / icon_raw.get_height()
@@ -462,6 +473,7 @@ class Display:
             icon_raw,
             (max(1, int(icon_raw.get_width() * icon_scale)), icon_target_height),
         )
+        icon_surf.set_alpha(int(255 * self.info_fade_progress))
 
         # lay out icon to the left of the temp number, right-aligned as a pair
         pair_width = icon_surf.get_width() + 8 + temp_surf.get_width()
