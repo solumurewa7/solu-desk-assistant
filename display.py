@@ -60,9 +60,11 @@ from starfield import Starfield
 
 SCREEN_W = 800
 SCREEN_H = 480
-ORB_SIZE = 700  # confirmed sharp at this size on real Pi hardware
+ORB_SIZE = 400  # checked directly against the real 800x480 screen — fills a
+                 # comfortable amount of height with clean margin top/bottom/sides
 
 FONT_PATH = "assets/fonts/Rubik.ttf"
+EMOJI_FONT_PATH = "assets/fonts/NotoColorEmoji.ttf"
 
 ORB_COLORS = {
     "sleep":  ((20, 20, 20),    (0, 0, 0)),
@@ -119,12 +121,17 @@ class Display:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.NOFRAME)
         self.clock = pygame.time.Clock()
 
-        self.font_primary = pygame.font.Font(FONT_PATH, 38)
-        self.font_primary.set_bold(True)  # stands in for "Rubik Medium" from the tkinter version
-        self.font_secondary = pygame.font.Font(FONT_PATH, 18)  # stands in for "Rubik Light"
+        self.font_primary = pygame.font.Font(FONT_PATH, 38)  # regular weight — this was the preferred one from the comparison
+        self.font_secondary = pygame.font.Font(FONT_PATH, 18)
+        self.font_secondary.set_bold(False)
         self.font_reminder_time = pygame.font.Font(FONT_PATH, 42)
-        self.font_reminder_time.set_bold(True)
         self.font_reminder_message = pygame.font.Font(FONT_PATH, 22)
+
+        # dedicated emoji font for weather icons — Rubik has no emoji glyphs
+        # at all (confirmed by direct glyph-table inspection, every weather
+        # icon character came back MISSING), so icons need a real color
+        # emoji font rather than the text font
+        self.font_emoji = pygame.font.Font(EMOJI_FONT_PATH, 32)
 
         self.starfield = Starfield(SCREEN_W, SCREEN_H)
         self.orb = Orb(ORB_SIZE, ORB_COLORS)
@@ -395,7 +402,11 @@ class Display:
         date_surf = self.font_secondary.render(date_str, True, secondary_color)
         self.screen.blit(date_surf, (20, 64))
 
-        # temperature + weather icon — top-right, primary weight
+        # temperature + weather icon — top-right, primary weight.
+        # Icon rendered SEPARATELY with the emoji font and blitted next to
+        # the temp number — Rubik has no emoji glyphs at all (confirmed via
+        # direct glyph-table inspection), so trying to render the icon
+        # character through font_primary just produced nothing visible.
         weather_str = self._get_cached_weather()
         weather_icons = {
             "clear": "\u2600", "sunny": "\u2600",
@@ -414,11 +425,20 @@ class Display:
                 break
 
         temp_number = weather_str.split("\u00b0")[0] if "\u00b0" in weather_str else "--"
-        temp_display = f"{temp_number}\u00b0 {icon}"
+        temp_text = f"{temp_number}\u00b0"
         weather_desc = weather_str.split("  ", 1)[1] if "  " in weather_str else ""
 
-        temp_surf = self.font_primary.render(temp_display, True, primary_color)
-        self.screen.blit(temp_surf, (SCREEN_W - 20 - temp_surf.get_width(), 14))
+        temp_surf = self.font_primary.render(temp_text, True, primary_color)
+        icon_surf = self.font_emoji.render(icon, True, primary_color)
+
+        # lay out icon to the left of the temp number, right-aligned as a pair
+        pair_width = icon_surf.get_width() + 8 + temp_surf.get_width()
+        pair_right_x = SCREEN_W - 20
+        icon_x = pair_right_x - pair_width
+        temp_x = icon_x + icon_surf.get_width() + 8
+
+        self.screen.blit(icon_surf, (icon_x, 10))
+        self.screen.blit(temp_surf, (temp_x, 14))
 
         desc_surf = self.font_secondary.render(weather_desc, True, secondary_color)
         self.screen.blit(desc_surf, (SCREEN_W - 20 - desc_surf.get_width(), 64))
