@@ -429,7 +429,21 @@ class Display:
         weather_desc = weather_str.split("  ", 1)[1] if "  " in weather_str else ""
 
         temp_surf = self.font_primary.render(temp_text, True, primary_color)
-        icon_surf = self.font_emoji.render(icon, True, primary_color)
+
+        # NotoColorEmoji ignores the requested point size entirely and
+        # always returns a fixed 136x128px bitmap glyph (confirmed by
+        # direct testing — requesting 16px through 48px all produced the
+        # identical 136x128 surface). That's why the icon rendered nearly
+        # 4x bigger than the temp text next to it. Scaling it down
+        # manually to match the temp text's height fixes this regardless
+        # of whatever native size the font happens to return.
+        icon_raw = self.font_emoji.render(icon, True, primary_color)
+        icon_target_height = temp_surf.get_height()
+        icon_scale = icon_target_height / icon_raw.get_height()
+        icon_surf = pygame.transform.smoothscale(
+            icon_raw,
+            (max(1, int(icon_raw.get_width() * icon_scale)), icon_target_height),
+        )
 
         # lay out icon to the left of the temp number, right-aligned as a pair
         pair_width = icon_surf.get_width() + 8 + temp_surf.get_width()
@@ -437,7 +451,7 @@ class Display:
         icon_x = pair_right_x - pair_width
         temp_x = icon_x + icon_surf.get_width() + 8
 
-        self.screen.blit(icon_surf, (icon_x, 10))
+        self.screen.blit(icon_surf, (icon_x, 14))
         self.screen.blit(temp_surf, (temp_x, 14))
 
         desc_surf = self.font_secondary.render(weather_desc, True, secondary_color)
