@@ -60,7 +60,7 @@ from starfield import Starfield
 
 SCREEN_W = 800
 SCREEN_H = 480
-ORB_SIZE = 400  # checked directly against the real 800x480 screen — fills a
+ORB_SIZE = 300  # checked directly against the real 800x480 screen — fills a
                  # comfortable amount of height with clean margin top/bottom/sides
 
 FONT_PATH = "assets/fonts/Rubik.ttf"
