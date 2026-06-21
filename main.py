@@ -30,12 +30,12 @@ def listen_for_wake_word(display):
 def listen_for_command():
     r = sr.Recognizer()
     with sr.Microphone(device_index=1) as source:
-        audio = r.listen(source)
-    try:
-        text = r.recognize_google(audio)
-        return text
-    except:
-        return None
+        try:
+            audio = r.listen(source, timeout=5)
+            text = r.recognize_google(audio)
+            return text
+        except:
+            return None
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
