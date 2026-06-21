@@ -7,6 +7,16 @@ from display import Display
 import threading
 import time
 import speech_recognition as sr
+import random
+from tts import speak
+import gemini
+
+ERROR_RESPONSES = [
+    "Sorry, I didn't catch that.",
+    "Hmm, I'm not sure what you said.",
+    "Could you try that again?",
+    "I didn't quite get that one.",
+]
 
 model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
 
@@ -22,16 +32,32 @@ def listen_for_wake_word(display):
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.5:
             display.set_state("idle")
-            time.sleep(1)
+            command_text = listen_for_command(display)
+            print("Command was:", command_text)
+            if command_text == None:
+                display.set_state("error")
+                speak(random.choice(ERROR_RESPONSES))
+                display.set_state("sleep")
+                continue
+            response = gemini.ask_gemini(command_text, [])
+            if response == None:
+                display.set_state("error")
+                speak(random.choice(ERROR_RESPONSES))
+                display.set_state("sleep")
+                continue
+            display.set_state("speak")
+            speak(response)
+            display.set_state("sleep")
             continue
 
 # ------------------------------------------------------------------
 
-def listen_for_command():
+def listen_for_command(display):
     r = sr.Recognizer()
-    with sr.Microphone(device_index=1) as source:
+    with sr.Microphone(device_index=1) as source:       
         try:
             audio = r.listen(source, timeout=5)
+            display.set_state("think")
             text = r.recognize_google(audio)
             return text
         except:
