@@ -21,6 +21,11 @@ ERROR_RESPONSES = [
 ]
 
 model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
+recognizer = sr.Recognizer()
+with sr.Microphone(device_index=1) as source:
+    print("Calibrating for ambient noise...")
+    recognizer.adjust_for_ambient_noise(source, duration=1)
+    print("Energy threshold set to:", recognizer.energy_threshold)
 
 # ------------------------------------------------------------------
 
@@ -47,7 +52,7 @@ def listen_for_wake_word(display):
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
-            command_text = listen_for_command(display)
+            command_text = listen_for_command(display, recognizer)
             print("Command was:", command_text)
             
             if command_text == None:
@@ -74,16 +79,16 @@ def listen_for_wake_word(display):
 
 # ------------------------------------------------------------------
 
-def listen_for_command(display):
-    r = sr.Recognizer()
-    with sr.Microphone(device_index=1) as source:       
+def listen_for_command(display, recognizer):
+    with sr.Microphone(device_index=1) as source:
         try:
-            audio = r.listen(source, timeout=5)
+            audio = recognizer.listen(source, timeout=5)
             display.set_state("think")
-            text = r.recognize_google(audio)
+            text = recognizer.recognize_google(audio)
             return text
         except:
             return None
+
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
