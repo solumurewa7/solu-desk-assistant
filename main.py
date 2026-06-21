@@ -1,3 +1,5 @@
+import os
+os.environ["SDL_AUDIODRIVER"] = "dummy"
 import openwakeword
 from openwakeword.model import Model
 import pyaudio
