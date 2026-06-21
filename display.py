@@ -67,7 +67,7 @@ FONT_PATH = "assets/fonts/Rubik.ttf"
 EMOJI_FONT_PATH = "assets/fonts/NotoColorEmoji.ttf"
 
 ORB_COLORS = {
-    "sleep":  ((20, 20, 20),    (0, 0, 0)),
+    "sleep":  ((255, 255, 255), (180, 180, 180)),
     "idle":   ((77, 184, 255),  (10, 61, 102)),
     "speak":  ((179, 136, 255), (61, 26, 102)),
     "joking": ((105, 240, 174), (26, 102, 67)),
@@ -141,7 +141,7 @@ class Display:
         self.orbit_system = OrbitSystem()
 
         # ---- state machine ----
-        self.current_state = "idle"
+        self.current_state = "sleep"
         self.transition_from_state = None
         self.transition_start_time = 0
         self.transition_duration = 0.6
@@ -310,6 +310,10 @@ class Display:
     # RENDER
     # ------------------------------------------------------------------
 
+    def get_sleep_brightness_multiplier_is_night(self):
+        hour = datetime.now().hour
+        return hour >= 23 or hour < 7
+
     def _render_frame(self, now, dt):
         self.screen.fill(COLOR_BG)
 
@@ -325,27 +329,23 @@ class Display:
         if self.current_state != "alarm":
             self.starfield.draw(self.screen, STAR_COLOR, now, alpha_multiplier=1.0)
 
+        self.orb.refresh_sleep_frame(self.get_sleep_brightness_multiplier_is_night())
         self._draw_orb(now, dt, core_rgb)
         self._update_and_draw_info_panel(now)
         self._update_and_draw_reminder_panel(now)
 
     def _get_current_core_rgb_for_drawing(self, now):
-        """
-        Returns the core color to use RIGHT NOW for the starfield tint —
-        blended between the from/to states during a crossfade, exactly
-        matching whatever color the orb itself is showing this frame, so
-        stars and orb always crossfade in perfect sync (no lag), per the
-        earlier decision that stars must match the orb's color exactly.
-        """
         target_core, _ = ORB_COLORS[self.current_state]
 
         if self.transition_from_state is not None:
             elapsed = now - self.transition_start_time
             progress = min(elapsed / self.transition_duration, 1.0)
             from_core, _ = ORB_COLORS[self.transition_from_state]
-            return interpolate_color(from_core, target_core, progress)
+            result = interpolate_color(from_core, target_core, progress)
+        else:
+            result = target_core
 
-        return target_core
+        return result
 
     def _draw_orb(self, now, dt, core_rgb):
         state = self.current_state
