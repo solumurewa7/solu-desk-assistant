@@ -32,8 +32,11 @@ def listen_for_wake_word(display):
             audio_array = stream.read(3528)
         except OSError as e:
             print("Mic read error, recovering:", e)
-            stream.stop_stream()
-            stream.close()
+            try:
+                    stream.stop_stream()
+                    stream.close()
+            except OSError:
+                pass  # stream may already be unusable, nothing more we can do to close it cleanly
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             continue
         
