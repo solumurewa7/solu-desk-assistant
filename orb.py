@@ -65,7 +65,7 @@ class Orb:
         core, edge = self.orb_colors["sleep"]
 
         if is_night:
-            multiplier = 0.15  # way way way dimmer at night
+            multiplier = 0  # way way way dimmer at night
             core = tuple(int(c * multiplier) for c in core)
             edge = tuple(int(c * multiplier) for c in edge)
 
