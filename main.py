@@ -49,6 +49,7 @@ def listen_for_wake_word(display):
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.4:
+            print(f"WAKE WORD FIRED with score {score['hey_soh_loo']}")
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
