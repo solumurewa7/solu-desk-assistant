@@ -6,6 +6,7 @@ from scipy.signal import resample
 from display import Display
 import threading
 import time
+import speech_recognition as sr
 
 model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
 
@@ -26,6 +27,30 @@ def listen_for_wake_word(display):
 
 # ------------------------------------------------------------------
 
+def listen_for_command():
+    r = sr.Recognizer()
+    with sr.Microphone(device_index=1) as source:
+        audio = r.listen(source)
+    try:
+        text = r.recognize_google(audio)
+        return text
+    except:
+        return None
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
 if __name__ == "__main__":
     display = Display()
     t = threading.Thread(target=listen_for_wake_word, args=(display,), daemon=True)
