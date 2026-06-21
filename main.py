@@ -32,8 +32,11 @@ def listen_for_wake_word(display):
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.5:
             display.set_state("idle")
+            stream.stop_stream()
+            stream.close()
             command_text = listen_for_command(display)
             print("Command was:", command_text)
+            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             if command_text == None:
                 display.set_state("error")
                 speak(random.choice(ERROR_RESPONSES))
