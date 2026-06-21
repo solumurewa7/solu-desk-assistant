@@ -36,20 +36,23 @@ def listen_for_wake_word(display):
             stream.close()
             command_text = listen_for_command(display)
             print("Command was:", command_text)
-            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+            
             if command_text == None:
                 display.set_state("error")
                 speak(random.choice(ERROR_RESPONSES))
+                stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
                 display.set_state("sleep")
                 continue
             response = gemini.ask_gemini(command_text, [])
             if response == None:
                 display.set_state("error")
                 speak(random.choice(ERROR_RESPONSES))
+                stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
                 display.set_state("sleep")
                 continue
             display.set_state("speak")
             speak(response)
+            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             display.set_state("sleep")
             continue
 
