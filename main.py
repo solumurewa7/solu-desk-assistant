@@ -49,7 +49,6 @@ def listen_for_wake_word(display):
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.4:
-            print(f"WAKE WORD FIRED with score {score['hey_soh_loo']}")
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
@@ -61,14 +60,14 @@ def listen_for_wake_word(display):
                 if command_text == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
-                    time.sleep(1.5)
+                    time.sleep(3)
                     display.set_state("sleep")
                     break 
                 response, follow_up = gemini.ask_gemini(command_text, [])
                 if response == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
-                    time.sleep(1.5)
+                    time.sleep(3)
                     display.set_state("sleep")
                     break
 
@@ -77,10 +76,10 @@ def listen_for_wake_word(display):
 
                 if follow_up:
                     display.set_state("idle")
-                    time.sleep(1.5)
+                    time.sleep(3)
                     continue
                 else:
-                    time.sleep(1.5)
+                    time.sleep(3)
                     display.set_state("sleep")
                     break
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
