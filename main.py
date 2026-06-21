@@ -28,7 +28,15 @@ def listen_for_wake_word(display):
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
     while True:
-        audio_array = stream.read(3528)
+        try:
+            audio_array = stream.read(3528)
+        except OSError as e:
+            print("Mic read error, recovering:", e)
+            stream.stop_stream()
+            stream.close()
+            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+            continue
+        
         audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
