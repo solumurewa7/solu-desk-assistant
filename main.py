@@ -49,19 +49,22 @@ def listen_for_wake_word(display):
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.4:
+            print(f"[{time.time():.2f}] WAKE WORD DETECTED")
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
 
             while True:
                 command_text = listen_for_command(display, recognizer)
-                print("Command was:", command_text)
+                print(f"[{time.time():.2f}] Command was:", command_text)
 
                 if command_text == None:
+                    print(f"[{time.time():.2f}] Timeout/error branch entered")
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
                     time.sleep(3)
                     display.set_state("sleep")
+                    print(f"[{time.time():.2f}] Set to sleep, breaking conversation loop")
                     break 
                 response, follow_up = gemini.ask_gemini(command_text, [])
                 if response == None:
