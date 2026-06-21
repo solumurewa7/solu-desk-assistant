@@ -32,7 +32,7 @@ def listen_for_wake_word(display):
         audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
-        if score["hey_soh_loo"] > 0.5:
+        if score["hey_soh_loo"] > 0.4:
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
@@ -43,6 +43,7 @@ def listen_for_wake_word(display):
                 display.set_state("error")
                 speak(random.choice(ERROR_RESPONSES))
                 stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+                time.sleep(1.5)
                 display.set_state("sleep")
                 continue
             response = gemini.ask_gemini(command_text, [])
@@ -50,11 +51,13 @@ def listen_for_wake_word(display):
                 display.set_state("error")
                 speak(random.choice(ERROR_RESPONSES))
                 stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+                time.sleep(1.5)
                 display.set_state("sleep")
                 continue
             display.set_state("speak")
             speak(response)
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+            time.sleep(1.5)
             display.set_state("sleep")
             continue
 
