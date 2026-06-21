@@ -38,13 +38,13 @@ def listen_for_wake_word(display):
         except OSError as e:
             print("Mic read error, recovering:", e)
             try:
-                    stream.stop_stream()
-                    stream.close()
+                stream.stop_stream()
+                stream.close()
             except OSError:
-                pass  # stream may already be unusable, nothing more we can do to close it cleanly
+                pass
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             continue
-        
+
         audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
@@ -52,30 +52,40 @@ def listen_for_wake_word(display):
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
-            command_text = listen_for_command(display, recognizer)
-            print("Command was:", command_text)
-            
-            if command_text == None:
-                display.set_state("error")
-                speak(random.choice(ERROR_RESPONSES))
-                time.sleep(1.5)
-                stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
-                display.set_state("sleep")
-                continue
-            response = gemini.ask_gemini(command_text, [])
-            if response == None:
-                display.set_state("error")
-                speak(random.choice(ERROR_RESPONSES))
-                time.sleep(1.5)
-                stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
-                display.set_state("sleep")
-                continue
-            display.set_state("speak")
-            speak(response)
-            time.sleep(1.5)
+
+            while True:
+                command_text = listen_for_command(display, recognizer)
+                print("Command was:", command_text)
+
+                if command_text == None:
+                    display.set_state("error")
+                    speak(random.choice(ERROR_RESPONSES))
+                    time.sleep(1.5)
+                    display.set_state("sleep")
+                    break 
+                response, follow_up = gemini.ask_gemini(command_text, [])
+                if response == None:
+                    display.set_state("error")
+                    speak(random.choice(ERROR_RESPONSES))
+                    time.sleep(1.5)
+                    display.set_state("sleep")
+                    break
+
+                display.set_state("speak")
+                speak(response)
+
+                if follow_up:
+                    display.set_state("idle")
+                    time.sleep(1.5)
+                    continue
+                else:
+                    time.sleep(1.5)
+                    display.set_state("sleep")
+                    break
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
-            display.set_state("sleep")
             continue
+            
+
 
 # ------------------------------------------------------------------
 
