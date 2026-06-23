@@ -12,6 +12,7 @@ import speech_recognition as sr
 import random
 from tts import speak
 import gemini
+import wave
 
 ERROR_RESPONSES = [
     "Sorry, I didn't catch that.",
@@ -50,6 +51,12 @@ def listen_for_wake_word(display):
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.4:
             print(f"[{time.time():.2f}] WAKE WORD DETECTED")
+            wf = wave.open(f"trigger_audio_{int(time.time())}.wav", "wb")
+            wf.setnchannels(1)
+            wf.setsampwidth(2)  # 2 bytes = 16-bit
+            wf.setframerate(44100)
+            wf.writeframes(audio_array)  # the raw bytes read this exact chunk, before resampling
+            wf.close()
             display.set_state("idle")
             stream.stop_stream()
             stream.close()
