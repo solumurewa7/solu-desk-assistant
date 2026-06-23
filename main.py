@@ -50,7 +50,7 @@ def listen_for_wake_word(display):
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.4:
-            print(f"[{time.time():.2f}] WAKE WORD DETECTED")
+            print(f"[{time.time():.2f}] WAKE WORD DETECTED, score={score['hey_soh_loo']:.4f}")
             wf = wave.open(f"trigger_audio_{int(time.time())}.wav", "wb")
             wf.setnchannels(1)
             wf.setsampwidth(2)  # 2 bytes = 16-bit
