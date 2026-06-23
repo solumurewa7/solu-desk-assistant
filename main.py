@@ -31,6 +31,7 @@ with sr.Microphone(device_index=1) as source:
 # ------------------------------------------------------------------
 
 def listen_for_wake_word(display):
+    global model
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
     while True:
@@ -98,6 +99,8 @@ def listen_for_wake_word(display):
                     display.set_state("sleep")
                     print("displayed sleep")
                     break
+
+            model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             continue
             
