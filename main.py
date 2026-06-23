@@ -69,27 +69,27 @@ def listen_for_wake_word(display):
                 response, follow_up = gemini.ask_gemini(command_text, [])
                 print(f"[{time.time():.2f}] Gemini response, follow_up={follow_up}")
                 if response == None:
-                    display.set_state("error 1")
+                    display.set_state("error")
                     print("displayed error")
                     speak(random.choice(ERROR_RESPONSES))
                     time.sleep(3)
-                    display.set_state("sleep 1")
+                    display.set_state("sleep")
                     print("displayed sleep")
                     break
 
-                display.set_state("speak 1")
+                display.set_state("speak")
                 print("displayed speak")
                 speak(response)
 
                 if follow_up:
                     display.set_state("idle")
-                    print("displayed followup 1")
+                    print("displayed followup")
                     time.sleep(3)
                     continue
                 else:
                     time.sleep(3)
                     display.set_state("sleep")
-                    print("displayed sleep 2")
+                    print("displayed sleep")
                     break
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             continue
