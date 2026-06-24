@@ -4,8 +4,9 @@ from config import OPENWEATHER_API_KEY
 
 BASE_URL = "https://api.openweathermap.org/data/2.5/weather?"
 API_KEY = OPENWEATHER_API_KEY
+DEFAULT_CITY = "Spring"
 
-def get_weather(city="Spring"):
+def get_weather(city=DEFAULT_CITY):
     try:
         url = BASE_URL + "appid=" + API_KEY + "&q=" + city + "&units=imperial"
         response = requests.get(url).json()

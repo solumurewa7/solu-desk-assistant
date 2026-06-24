@@ -3,12 +3,15 @@ from google.genai import types
 import json
 import os
 from config import GEMINI_API_KEY
+from datetime import datetime
+from weather import DEFAULT_CITY
+from reminders import add_reminder
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 MEMORY_FILE = "data/memory.json"
 
-SOLU_SYSTEM_PROMPT = SOLU_SYSTEM_PROMPT = """You are Sowlu, a male desk assistant built by Shay E Oloomoo-raywah, a Computer Engineering student at Texas A&M University. 
+SOLU_SYSTEM_PROMPT = """You are Sowlu, a male desk assistant built by Shay E Oloomoo-raywah, a Computer Engineering student at Texas A&M University. 
 You are witty, confident, and slightly sarcastic but know when to be straight and professional.
 When executing tasks like setting reminders or checking weather, be direct and functional.
 When having casual conversation, show personality.
@@ -37,6 +40,22 @@ else, including normal conversation, casual answers, and complete
 responses. This tag is a silent control signal for the program reading
 your response, never mention it, explain it, or refer to it in the
 words you actually say to the user.
+
+When you have ALL the information needed to create a reminder (a message,
+a specific date, and a specific time), append this additional tag at the
+very end of your response, after the FOLLOWUP tag:
+<<<REMINDER:the message here|YYYY-MM-DD|HH:MM|True>>>
+
+The date must be in YYYY-MM-DD format (e.g. 2026-06-25). The time must be
+in 24-hour HH:MM format (e.g. 14:30 for 2:30 PM). The last field is
+whether to add this reminder to the calendar: use true by default, unless
+the user specifically says not to add it to their calendar or says it's
+just a personal reminder, in which case use False.
+
+Only include this tag once you have a real date and time, never a vague
+one. If you don't have enough information yet, do not include this tag
+at all, and ask the user for what's missing instead (using FOLLOWUP:TRUE).
+
 """
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
@@ -76,14 +95,21 @@ def remove_from_memory(fact):
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
+from datetime import datetime
+from weather import DEFAULT_CITY
+
 def build_system_prompt():
     memories = load_memory()
     system_prompt = SOLU_SYSTEM_PROMPT
+    
+    current_time = datetime.now().strftime("%I:%M %p on %A, %B %d, %Y")
+    system_prompt += f"\n\nThe current local date and time is {current_time}. The user is located in {DEFAULT_CITY}, Texas. Always answer time/date/location-based questions using this real information, not assumptions or generic defaults."
+    
     if memories:
         system_prompt += "\n\nThings to remember about the user:\n"
         for memory in memories:
             system_prompt += f"- {memory}\n"
-    return system_prompt    
+    return system_prompt   
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -100,7 +126,32 @@ def ask_gemini(prompt, history):
                 tools=[search_tool],
             )
         )
+
+
+        # Example: Got it, I'll remind you to call mom on June 25th at 2:30 PM.<<<REMINDER:call mom|2026-06-25|14:30|True>>><<<FOLLOWUP:FALSE>>>
         text = response.text.strip()
+
+        if "<<<REMINDER:" in text:
+            before_tag, after_marker = text.split("<<<REMINDER:", 1)
+            reminder_txt, after_tag = after_marker.split(">>>", 1)
+            reminder_txt_parts = reminder_txt.split("|")
+
+            if len(reminder_txt_parts) == 4:
+                message, date, time, calendar_text = reminder_txt_parts
+                calendar_flag = (calendar_text.strip() == "True")
+                success = add_reminder(message.strip(), date.strip(), time.strip(), calendar_flag)
+                if not success:
+                    print(f"Warning: failed to add reminder (message={message!r}, date={date!r}, time={time!r})")
+            elif len(reminder_txt_parts) == 3:
+                message, date, time = reminder_txt_parts
+                success = add_reminder(message.strip(), date.strip(), time.strip())
+                if not success:
+                    print(f"Warning: failed to add reminder (message={message!r}, date={date!r}, time={time!r})")
+
+            text = (before_tag + after_tag).strip()
+            
+            
+
 
         if text.endswith("<<<FOLLOWUP:TRUE>>>"):
             clean_text = text[:-len("<<<FOLLOWUP:TRUE>>>")].strip()
