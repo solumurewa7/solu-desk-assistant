@@ -197,21 +197,6 @@ class Display:
         self.reminder_panel_visible = True
         self.orb_target_x_ratio = REMINDER_LEFT_X_RATIO
 
-    def dismiss_reminder(self):
-        """
-        Starts the dismiss sequence: text fades out first, and ONLY once
-        that fade fully completes does the orb slide back to center.
-        This sequencing (rather than doing both simultaneously) was
-        specifically confirmed to look right in the tkinter version,
-        after an earlier version that moved both at once looked broken.
-        The actual sequencing logic lives in _update_reminder_panel(),
-        which watches for the fade to hit exactly 0.0 and only then
-        triggers the slide-back — see that method for the full
-        explanation.
-        """
-        self.reminder_panel_visible = False
-        self.set_state("idle")
-
     def stop(self):
         self.running = False
 
@@ -601,6 +586,12 @@ class Display:
             if pair == {"sleep", "idle"}:
                 return 0.15
         return self.transition_duration
+    
+    def dismiss_reminder(self):
+        self.reminder_panel_visible = False
+        self.set_state("sleep")
+
+
 
 if __name__ == "__main__":
     display = Display()

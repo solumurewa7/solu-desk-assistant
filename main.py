@@ -113,6 +113,7 @@ def check_reminders_loop(display):
                 while display.current_state != "sleep":
                     time.sleep(1)
                 display.show_reminder(reminder)
+                display.set_state("alarm")
                 while display.reminder_data is not None:
                     time.sleep(0.5)
                 reminders.mark_completed(reminder["id"])   
