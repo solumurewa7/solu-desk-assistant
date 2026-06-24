@@ -12,6 +12,7 @@ import speech_recognition as sr
 import random
 from tts import speak
 import gemini
+import reminders
 
 ERROR_RESPONSES = [
     "Sorry, I didn't catch that.",
@@ -104,6 +105,20 @@ def listen_for_command(display, recognizer):
 
 # ------------------------------------------------------------------
 
+def check_reminders_loop(display):
+    while True:
+        if display.current_state == "sleep":
+            due = reminders.check_due_reminders()
+            for reminder in due:
+                while display.current_state != "sleep":
+                    time.sleep(1)
+                display.show_reminder(reminder)
+                while display.reminder_data is not None:
+                    time.sleep(0.5)
+                reminders.mark_completed(reminder["id"])   
+        time.sleep(30)
+            
+
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
@@ -121,4 +136,6 @@ if __name__ == "__main__":
     display = Display()
     t = threading.Thread(target=listen_for_wake_word, args=(display,), daemon=True)
     t.start()
+    t2 = threading.Thread(target=check_reminders_loop, args=(display,), daemon=True)
+    t2.start()
     display.run()
