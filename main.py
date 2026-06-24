@@ -52,6 +52,7 @@ def listen_for_wake_word(display):
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.4:
             display.set_state("idle")
+            play_sound("sounds/startup.mp3")
             stream.stop_stream()
             stream.close()
 
