@@ -117,7 +117,6 @@ def check_reminders_loop(display):
                 display.set_state("alarm")
                 while display.reminder_data is not None:
                     play_sound("sounds/alarm.mp3")
-                    time.sleep(0.5)
                 reminders.mark_completed(reminder["id"])   
         time.sleep(30)
             
