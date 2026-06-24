@@ -13,6 +13,10 @@ import random
 from tts import speak, play_sound
 import gemini
 import reminders
+import RPi.GPIO as GPIO
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.IN)
 
 ERROR_RESPONSES = [
     "Sorry, I didn't catch that.",
@@ -124,6 +128,9 @@ def check_reminders_loop(display):
             for reminder in due:
                 while display.current_state != "sleep":
                     time.sleep(1)
+                while GPIO.input(17) == 0:
+                    time.sleep(1)
+
                 display.show_reminder(reminder)
                 display.set_state("alarm")
                 while display.reminder_data is not None:
