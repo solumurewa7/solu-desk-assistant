@@ -72,14 +72,14 @@ def listen_for_wake_word(display):
                 if command_text == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
-                    time.sleep(3)
+                    #time.sleep(3)
                     display.set_state("sleep")
                     break
                 response, follow_up = gemini.ask_gemini(command_text, history)
                 if response == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
-                    time.sleep(3)
+                    #time.sleep(3)
                     display.set_state("sleep")
                     break
 
@@ -91,10 +91,10 @@ def listen_for_wake_word(display):
 
                 if follow_up:
                     display.set_state("idle")
-                    time.sleep(3)
+                    #time.sleep(3)
                     continue
                 else:
-                    time.sleep(3)
+                    #time.sleep(3)
                     display.set_state("sleep")
                     break
 
