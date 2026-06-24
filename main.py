@@ -56,6 +56,8 @@ def listen_for_wake_word(display):
             stream.stop_stream()
             stream.close()
 
+            history = []
+
             while True:
                 command_text = listen_for_command(display, recognizer)
                 print("Command was:", command_text)
@@ -66,13 +68,16 @@ def listen_for_wake_word(display):
                     time.sleep(3)
                     display.set_state("sleep")
                     break 
-                response, follow_up = gemini.ask_gemini(command_text, [])
+                response, follow_up = gemini.ask_gemini(command_text, history)
                 if response == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
                     time.sleep(3)
                     display.set_state("sleep")
                     break
+
+                history.append({"role": "user", "parts": [{"text": command_text}]})
+                history.append({"role": "model", "parts": [{"text": response}]})
 
                 display.set_state("speak")
                 speak(response)

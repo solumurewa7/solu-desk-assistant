@@ -118,9 +118,11 @@ def ask_gemini(prompt, history):
         system_prompt = build_system_prompt()
         search_tool = types.Tool(google_search=types.GoogleSearch())
         
+        contents = history + [{"role": "user", "parts": [{"text": prompt}]}]
+                
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 tools=[search_tool],
