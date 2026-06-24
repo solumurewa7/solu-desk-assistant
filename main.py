@@ -57,7 +57,7 @@ def listen_for_wake_word(display):
         audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
-        if score["hey_soh_loo"] > 0.4:
+        if score["hey_soh_loo"] > 0.3:
             display.set_state("idle")
             play_sound("sounds/startup.mp3")
             stream.stop_stream()
