@@ -73,7 +73,7 @@ ORB_COLORS = {
     "joking": ((105, 240, 174), (26, 102, 67)),
     "think":  ((255, 183, 77),  (102, 61, 10)),
     "error":  ((255, 82, 82),   (102, 10, 10)),
-    "alarm":  ((255, 255, 255), (102, 102, 102)),
+    "alarm":  ((255, 200, 0), (102, 75, 0)),
 }
 
 # gray-scale text hierarchy, carried over directly from the tkinter version
