@@ -22,16 +22,23 @@ ERROR_RESPONSES = [
 ]
 
 model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
-recognizer = sr.Recognizer()
-with sr.Microphone(device_index=1) as source:
-    print("Calibrating for ambient noise...")
-    recognizer.adjust_for_ambient_noise(source, duration=1)
-    print("Energy threshold set to:", recognizer.energy_threshold)
 
 # ------------------------------------------------------------------
 
 def listen_for_wake_word(display):
     global model
+    display.set_state("think")
+    recognizer = sr.Recognizer()
+    with sr.Microphone(device_index=1) as source:
+        print("Calibrating for ambient noise...")
+        recognizer.adjust_for_ambient_noise(source, duration=3)
+        MIN_ENERGY_THRESHOLD = 800
+        if recognizer.energy_threshold < MIN_ENERGY_THRESHOLD:
+            print(f"Calibrated threshold {recognizer.energy_threshold:.1f} too low, raising to floor of {MIN_ENERGY_THRESHOLD}")
+            recognizer.energy_threshold = MIN_ENERGY_THRESHOLD
+        print("Energy threshold set to:", recognizer.energy_threshold)
+    display.set_state("sleep")
+
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
     while True:
@@ -67,7 +74,7 @@ def listen_for_wake_word(display):
                     speak(random.choice(ERROR_RESPONSES))
                     time.sleep(3)
                     display.set_state("sleep")
-                    break 
+                    break
                 response, follow_up = gemini.ask_gemini(command_text, history)
                 if response == None:
                     display.set_state("error")
@@ -94,7 +101,6 @@ def listen_for_wake_word(display):
             model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
             continue
-            
 
 
 # ------------------------------------------------------------------
@@ -122,21 +128,9 @@ def check_reminders_loop(display):
                 display.set_state("alarm")
                 while display.reminder_data is not None:
                     play_sound("sounds/alarm.mp3")
-                reminders.mark_completed(reminder["id"])   
+                reminders.mark_completed(reminder["id"])
         time.sleep(30)
-            
 
-# ------------------------------------------------------------------
-
-# ------------------------------------------------------------------
-
-# ------------------------------------------------------------------
-
-# ------------------------------------------------------------------
-
-# ------------------------------------------------------------------
-
-# ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
 if __name__ == "__main__":
