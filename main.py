@@ -10,7 +10,7 @@ import threading
 import time
 import speech_recognition as sr
 import random
-from tts import speak
+from tts import speak, play_sound
 import gemini
 import reminders
 
@@ -115,6 +115,7 @@ def check_reminders_loop(display):
                 display.show_reminder(reminder)
                 display.set_state("alarm")
                 while display.reminder_data is not None:
+                    play_sound("sounds/alarm.mp3")
                     time.sleep(0.5)
                 reminders.mark_completed(reminder["id"])   
         time.sleep(30)

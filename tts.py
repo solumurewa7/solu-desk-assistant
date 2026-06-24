@@ -16,6 +16,9 @@ def speak(text): # Converts text to speech and plays it through the speaker.
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
 
+def play_sound(filepath):
+    subprocess.run(["mpg123", "-a", AUDIO_DEVICE, filepath])
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         text_to_speak = " ".join(sys.argv[1:])
