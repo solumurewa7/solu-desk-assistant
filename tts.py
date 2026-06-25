@@ -7,6 +7,7 @@ AUDIO_DEVICE = "hw:0,0"
 
 
 def speak(text):
+    """Blocking speech playback, used for short responses like error apologies."""
     temp_filename = "temp_speech.mp3"
 
     try:
@@ -16,6 +17,24 @@ def speak(text):
     finally:
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
+
+
+def start_speaking(text):
+    """Non-blocking speech playback. Returns (process, temp_filename) so
+    it can be interrupted (e.g. tapping the orb) and cleaned up via stop_speaking()."""
+    temp_filename = f"temp_speech_{os.getpid()}_{id(text)}.mp3"
+    tts = gTTS(text=text, lang="en", tld="com", slow=False)
+    tts.save(temp_filename)
+    process = subprocess.Popen(["mpg123", "-a", AUDIO_DEVICE, temp_filename])
+    return process, temp_filename
+
+
+def stop_speaking(process, temp_filename):
+    """Terminates a running speech process (if still active) and removes its temp file."""
+    if process is not None and process.poll() is None:
+        process.terminate()
+    if temp_filename and os.path.exists(temp_filename):
+        os.remove(temp_filename)
 
 
 def play_sound(filepath):

@@ -10,7 +10,7 @@ import threading
 import time
 import speech_recognition as sr
 import random
-from tts import speak, play_sound, start_alarm_sound, stop_alarm_sound
+from tts import speak, play_sound, start_alarm_sound, stop_alarm_sound, start_speaking, stop_speaking
 import gemini
 import reminders
 import RPi.GPIO as GPIO
@@ -121,7 +121,25 @@ def listen_for_wake_word(display):
                 history.append({"role": "model", "parts": [{"text": response}]})
 
                 display.set_state("speak")
-                speak(response)
+                process, temp_filename = start_speaking(response)
+                display.active_speech_process = process
+
+                # wait for speech to finish naturally OR be interrupted by
+                # a tap (display._on_tap terminates the process and sets
+                # state to sleep directly, which is what ends this loop early)
+                was_interrupted = False
+                while process.poll() is None and display.current_state == "speak":
+                    time.sleep(0.1)
+                if display.current_state == "sleep":
+                    was_interrupted = True
+
+                stop_speaking(process, temp_filename)
+                display.active_speech_process = None
+
+                # a tap to stop speech always ends the conversation, even
+                # if this response would otherwise have asked a follow-up
+                if was_interrupted:
+                    break
 
                 if follow_up:
                     display.set_state("idle")
