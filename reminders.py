@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, date, timedelta
+import solu_calendar
 
 REMINDERS_FILE = "data/reminders.json"
 
@@ -26,11 +27,15 @@ def add_reminder(message, date, time, calendar=True):
     loaded_reminders = load_reminders()
     reminder_datetime = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
     if reminder_datetime < datetime.now():
-        return False  # can't set a reminder in the past, now checks the actual date+time together, not just the date
-    id = (max((r["id"] for r in loaded_reminders), default=0)) + 1  # robust against deletions/reordering, always takes the true max across all reminders rather than assuming the last item has the highest id
+        return False
+    id = (max((r["id"] for r in loaded_reminders), default=0)) + 1
     reminder = {"id": id, "date": date, "time": time, "message": message, "calendar": calendar, "completed": False, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     loaded_reminders.append(reminder)
     save_reminders(loaded_reminders)
+
+    if calendar:
+        solu_calendar.add_event(message, date, time)
+
     return True
 
 #-------------------------------------------------------------------------------------------------------------------------------------------
