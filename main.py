@@ -154,7 +154,7 @@ def check_reminders_loop(display):
                 while display.reminder_data is not None:
                     if alarm_process.poll() is not None:
                         alarm_process = start_alarm_sound("sounds/alarm.mp3")
-                    time.sleep(0.2)
+                    time.sleep(1)
 
                 stop_alarm_sound(alarm_process)
                 reminders.mark_completed(reminder["id"])
