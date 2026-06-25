@@ -1,10 +1,3 @@
-"""
-orbit_particles.py — particles orbiting outside the orb, like planets
-around a sun. Each particle has its own random tilt, orbit size, and
-speed, so they pass behind the orb (hidden) and in front of it
-(visible against the starfield) independently of each other.
-"""
-
 import math
 import random
 
