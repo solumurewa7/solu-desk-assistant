@@ -2,7 +2,11 @@
 
 A voice-activated physical desk assistant built from scratch using a Raspberry Pi 4 and Python. Solu responds to voice commands, holds real multi-turn conversations, delivers real-time weather updates, manages reminders with Google Calendar sync, and runs on a 7-inch touchscreen display with a custom animated interface built entirely in Pygame.
 
-> **Demo coming soon.**
+
+[![Solu Desk Assistant Demo](https://img.youtube.com/vi/Qm5x9qhWwjQ/0.jpg)](https://youtu.be/Qm5x9qhWwjQ)
+
+
+
 
 ---
 
