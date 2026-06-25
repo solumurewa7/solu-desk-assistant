@@ -19,30 +19,18 @@ def speak(text):
 
 
 def play_sound(filepath):
-    """Blocking playback, used for things like the startup chime where
-    waiting for it to finish before continuing is fine/expected."""
+    """Blocking playback, for sounds where waiting for it to finish is fine (e.g. the startup chime)."""
     subprocess.run(["mpg123", "-a", AUDIO_DEVICE, filepath])
 
 
 def start_alarm_sound(filepath):
-    """
-    Non-blocking alarm playback. Returns the live subprocess.Popen handle
-    immediately, WITHOUT waiting for the sound to finish -- this is what
-    makes it possible to actually interrupt the alarm mid-clip the moment
-    someone dismisses it (tap or "stop" voice command), rather than being
-    stuck waiting for whatever clip is currently playing to finish on its
-    own, the way the old blocking play_sound() in a loop behaved.
-    """
+    """Non-blocking playback, returns the live process handle so it can be
+    interrupted instantly via stop_alarm_sound() rather than waiting for the clip to finish."""
     return subprocess.Popen(["mpg123", "-a", AUDIO_DEVICE, filepath])
 
 
 def stop_alarm_sound(process):
-    """
-    Immediately terminates a running alarm sound process. Safe to call
-    even if the process has already finished on its own (terminate() is
-    a no-op on an already-dead process, and poll() lets us check first to
-    avoid any race-condition weirdness).
-    """
+    """Terminates a running alarm sound process. Safe to call even if it already finished."""
     if process is not None and process.poll() is None:
         process.terminate()
 
