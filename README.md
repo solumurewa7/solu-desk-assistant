@@ -1,6 +1,6 @@
 # Solu Desk Assistant
 
-A voice-activated physical desk assistant built from scratch using a Raspberry Pi 4 and Python. Solu responds to voice commands, delivers real-time weather updates, manages reminders, and runs on a 7-inch touchscreen display mounted on your desk, with a custom animated interface built entirely in code.
+A voice-activated physical desk assistant built from scratch using a Raspberry Pi 4 and Python. Solu responds to voice commands, holds real multi-turn conversations, delivers real-time weather updates, manages reminders with Google Calendar sync, and runs on a 7-inch touchscreen display with a custom animated interface built entirely in Pygame.
 
 > **Demo coming soon.**
 
@@ -9,14 +9,15 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 ## Features
 
 - **Local wake word detection** — say "Hey Solu" to activate, using a custom-trained openWakeWord model running entirely on-device
-- **Voice recognition** — powered by Google Speech Recognition for command transcription
+- **Voice recognition** — Google Speech Recognition for command transcription, with automatic ambient noise calibration on startup
+- **Multi-turn conversation** — Solu remembers context within a conversation and knows when to ask a follow-up question versus when to end the interaction
 - **Text-to-speech responses** — natural voice output via gTTS
-- **Real-time weather** — live conditions pulled from OpenWeatherMap API
-- **Live web search** — Gemini autonomously searches the web for current information when a question requires it
-- **Smart reminders** — set reminders by voice, every reminder alerts automatically, with optional Google Calendar sync
-- **Motion detection** — PIR sensor wakes the screen when you enter the room
-- **Animated touchscreen display** — a custom-rendered glowing orb interface with smooth color transitions, breathing animation, and touch-reactive feedback, built entirely with Pillow and tkinter
-- **AI-powered conversation** — Gemini API handles open-ended questions and natural dialogue
+- **Real-time weather and live web search** — Gemini answers using OpenWeatherMap data and autonomous Google Search grounding when a question needs current information
+- **Smart reminders** — set reminders by voice using natural, relative phrasing ("remind me in an hour," "tomorrow at 3pm"), with optional Google Calendar sync
+- **Motion-gated alarms** — reminders only alarm once someone is actually detected nearby (PIR sensor), and can be dismissed by tapping the screen or saying "hey Solu, stop the alarm"
+- **Day/night aware display** — the orb dims to fully invisible at night and returns to normal during the day
+- **Animated touchscreen display** — a custom-rendered glowing orb with smooth color transitions, breathing animation, touch-reactive feedback, an orbiting particle system, and a starfield background, built entirely in Pygame
+- **AI-powered conversation** — Gemini API handles open-ended questions, reminders, and natural dialogue, aware of the real current time and location
 - **Personality** — witty, confident, and knows when to be straight
 
 ---
@@ -29,7 +30,7 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 | Hosyond 7" DSI Touchscreen | 800x480, capacitive touch |
 | HC-SR501 PIR Motion Sensor | GPIO-connected |
 | USB Microphone | Plug and play |
-| Anker Speaker | USB power, 3.5mm audio |
+| Anker Speaker | 3.5mm audio |
 
 ---
 
@@ -37,9 +38,9 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 
 **Languages:** Python
 
-**Libraries:** SpeechRecognition, openWakeWord, gTTS, tkinter, Pillow, requests, RPi.GPIO
+**Libraries:** SpeechRecognition, openWakeWord, gTTS, Pygame, PyAudio, NumPy, SciPy, requests, RPi.GPIO
 
-**APIs:** OpenWeatherMap, Gemini API (with Google Search grounding), Google Calendar API
+**APIs:** OpenWeatherMap, Gemini API (with Google Search grounding and function-style structured tags), Google Calendar API (OAuth2)
 
 **Hardware:** Raspberry Pi 4, PIR motion sensor, 7-inch DSI display
 
@@ -49,30 +50,34 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 
 ## How It Works
 
-Solu runs as a continuous Python process on the Raspberry Pi. A PIR motion sensor detects when someone enters the room and wakes the touchscreen display silently. From there, a custom-trained openWakeWord model continuously listens for the phrase "Hey Solu" entirely on-device, with no audio sent anywhere until the wake word is actually detected. Once triggered, the following command is transcribed using Google Speech Recognition and routed to the appropriate handler: weather retrieval, reminder management, time and date, live web search, or open-ended conversation via the Gemini API. Responses are spoken back using gTTS and played through the speaker.
+Solu runs as a continuous Python process on the Raspberry Pi, with three background threads: the wake word listener, the reminder checker, and the Pygame display loop.
 
-The display itself is a fully custom-rendered interface: a glowing orb generated programmatically with gradient and glow effects, animated with a continuous breathing pulse, smooth color crossfades between emotional states, and a responsive touch-reactive pulse. A secondary panel reveals the time, date, and weather on tap, and slides into view automatically when a reminder is due.
+A custom-trained openWakeWord model continuously listens for "Hey Solu" entirely on-device, with no audio sent anywhere until the wake word is detected. Once triggered, the following command is transcribed using Google Speech Recognition and sent to the Gemini API along with the running conversation history. Gemini's response includes two hidden control tags: one telling the program whether to keep listening for a follow-up or end the conversation, and one (only when relevant) containing a fully-parsed reminder to create, including relative-time math ("in an hour," "tomorrow") already converted to a real date and time. Responses are spoken aloud using gTTS.
 
-All reminder data is stored locally in a JSON file. Reminders flagged for Google Calendar are synced automatically via the Google Calendar API.
+Reminders are stored locally in a JSON file and checked every 10 seconds. A due reminder only triggers once the orb is at rest and the PIR sensor detects someone nearby, so Solu never alarms into an empty room. The alarm sound loops until dismissed by tapping the screen or saying "hey Solu, stop the alarm," both of which stop it within a fraction of a second. Reminders flagged for the calendar are synced automatically via the Google Calendar API.
+
+The display is fully custom-rendered in Pygame: a sharp-edged gradient orb with independent orbiting particles (each on its own randomized orbital plane, like planets around a sun), a twinkling starfield background, smooth color crossfades between emotional states, a breathing animation, and touch-reactive feedback. The orb dims to fully invisible between 11pm and 7am, and a tap reveals the time, date, and weather.
 
 ---
 
 ## Project Status
 
-Currently in development. Core architecture and display are complete; voice loop integration in progress.
+Core architecture, voice loop, conversation system, reminders, calendar sync, and display are complete and working end to end.
 
 **Completed:**
-- Personality and response library
-- Weather API integration with live Gemini-powered Google Search grounding
-- Reminder system with Google Calendar sync
-- Custom animated touchscreen UI (glowing orb, state transitions, touch interaction, reminder panel)
+- Custom wake word model (openWakeWord), trained and tuned for real-world reliability
+- Full wake word → listen → Gemini → speak conversation loop, with multi-turn follow-up support and real conversation history
+- Natural-language reminder creation (relative time parsing, message/time/calendar all extracted from a single Gemini response)
+- Motion-gated reminder alarms with instant tap or voice dismissal
+- Google Calendar sync
+- Weather and live web search integration, aware of real location and time
+- Custom animated touchscreen UI in Pygame (orb, orbiting particles, starfield, state transitions, info panel, reminder panel)
 - PIR motion sensor integration
-- Project architecture and planning
+- Day/night aware display dimming
 
-**In progress:**
-- Custom wake word model training (openWakeWord)
-- Wake word listener loop and command handler (main.py / brain.py)
-- End-to-end voice command integration
+**Possible future work:**
+- Higher-quality local text-to-speech and speech-to-text (tested Piper and Vosk; both underperformed the current cloud-based setup on this hardware, may revisit on different hardware)
+- Persistent conversation memory across separate wake-word sessions (currently scoped to one conversation only)
 
 ---
 
