@@ -73,7 +73,7 @@ def listen_for_wake_word(display):
                     display.dismiss_reminder()
                 else:
                     display.set_state("alarm")
-
+                model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
                 stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
                 continue
 
