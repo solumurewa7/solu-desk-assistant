@@ -1,49 +1,6 @@
 """
-display.py — Solu's full visual layer, Pygame version.
-
-This is the real, final display module (not a throwaway test like
-fps_test.py was). It ports every feature that existed in the original
-tkinter+Pillow display.py, rebuilt on the validated Pygame foundation
-(orb.py + starfield.py) from this rewrite:
-
-  - 7 emotional states (sleep/idle/speak/joking/think/error/alarm), each
-    with its own orb color, smooth crossfade between any two states
-  - Starfield background, tinted to match the orb's current color,
-    hidden during alarm
-  - Breathing animation (sine-wave scale pulse)
-  - Touch-reactive pulse when tapping directly on the orb, with a
-    cooldown to prevent spam-tap stacking
-  - Tap-to-reveal info panel (time, date, temperature, weather
-    description), auto-hides after a few seconds, gray-scale visual
-    hierarchy (brighter for primary text, dimmer for secondary)
-  - Full reminder panel: orb slides left, reminder time + message fade
-    in on the right, tap-to-dismiss (or programmatic dismiss for a
-    future voice command) triggers a SEQUENCED fade-out-then-slide-back,
-    not simultaneous, matching what was confirmed to look right in the
-    original version
-
-Key porting decisions from tkinter to Pygame:
-  - tkinter's canvas.create_text/itemconfig persistent-item pattern is
-    replaced by just re-rendering text surfaces each frame Pygame has no
-    persistent canvas items the way tkinter does, but since we already
-    proved the orb pipeline easily holds 60fps, re-rendering small text
-    surfaces every frame is trivial by comparison — no need for the
-    same "create once, update in place" trick that mattered for tkinter.
-  - The "text fades to background color, which leaves a ghost over a
-    non-uniform background" bug that was found and fixed in tkinter
-    (text needs explicit hiding, not just color matching, once fully
-    faded) does NOT apply here, since Pygame draws fresh each frame from
-    scratch — there's no persistent canvas item to leave a ghost. We
-    still gate on a visibility/alpha check before rendering text at all
-    rather than rendering invisible text for no reason, but it's a
-    performance choice now, not a correctness fix.
-  - Rubik font loaded directly from a bundled .ttf via pygame.font.Font
-    (no system font installation needed, unlike tkinter). Visual weight
-    hierarchy (originally "Rubik Medium" vs "Rubik Light") is now
-    achieved with one font file plus Pygame's synthetic bold flag,
-    since the static weight variants no longer exist at their old
-    download path upstream — confirmed via two separate failed
-    downloads before falling back to this approach.
+display.py — Solu's visual layer (orb, starfield, info panel, reminder panel).
+Run directly to preview the display on its own: python3 display.py
 """
 
 import pygame
@@ -61,7 +18,7 @@ from orbit_particles import OrbitSystem, draw_particle_list
 
 SCREEN_W = 800
 SCREEN_H = 480
-ORB_SIZE = 340  # confirmed final size against the real screen
+ORB_SIZE = 340
 
 FONT_PATH = "assets/fonts/Rubik.ttf"
 EMOJI_FONT_PATH = "assets/fonts/NotoColorEmoji.ttf"
@@ -73,28 +30,25 @@ ORB_COLORS = {
     "joking": ((105, 240, 174), (26, 102, 67)),
     "think":  ((255, 183, 77),  (102, 61, 10)),
     "error":  ((255, 82, 82),   (102, 10, 10)),
-    "alarm":  ((255, 200, 0), (102, 75, 0)),
+    "alarm":  ((255, 200, 0),   (102, 75, 0)),
 }
 
-# gray-scale text hierarchy, carried over directly from the tkinter version
-COLOR_PRIMARY_TEXT = (192, 192, 192)    # #c0c0c0 — time, temp number
-COLOR_SECONDARY_TEXT = (112, 112, 112)  # #707070 — date, weather description
+COLOR_PRIMARY_TEXT = (192, 192, 192)
+COLOR_SECONDARY_TEXT = (112, 112, 112)
 COLOR_BG = (0, 0, 0)
-STAR_COLOR = (255, 255, 255)  # fixed neutral white — stars no longer follow
-                               # the orb's state color, only the orb and the
-                               # orbiting particles do that now
+STAR_COLOR = (255, 255, 255)  # stars stay fixed white, only the orb/particles follow state color
 
-INFO_PANEL_DURATION = 5       # seconds the info panel stays visible after a tap
-INFO_FADE_SPEED = 0.15        # easing factor, same value confirmed to feel right in tkinter
+INFO_PANEL_DURATION = 5
+INFO_FADE_SPEED = 0.15
 
-REMINDER_FADE_SPEED = 0.3     # faster than the info panel, confirmed snappier dismiss feel
-ORB_POSITION_EASE_SPEED = 0.08  # slower, more deliberate slide for the reminder panel
+REMINDER_FADE_SPEED = 0.3
+ORB_POSITION_EASE_SPEED = 0.08
 
-REMINDER_LEFT_X_RATIO = 0.28   # how far left the orb slides when showing a reminder
+REMINDER_LEFT_X_RATIO = 0.28
 CENTER_X_RATIO = 0.5
 
 BREATHING_CYCLE_SECONDS = 4
-BREATHING_SCALE_AMOUNT = 0.02  # orb scales between 0.98x and 1.02x
+BREATHING_SCALE_AMOUNT = 0.02
 
 TOUCH_PULSE_DURATION = 0.4
 TOUCH_PULSE_COOLDOWN = 0.5
@@ -102,7 +56,7 @@ TOUCH_PULSE_MAX_BOOST = 0.06
 
 
 def interpolate_color(color_a, color_b, progress):
-    """Blends from color_a to color_b based on progress (0.0 to 1.0). Same helper as tkinter version."""
+    """Blends from color_a to color_b based on progress (0.0 to 1.0)."""
     r = int(color_a[0] + (color_b[0] - color_a[0]) * progress)
     g = int(color_a[1] + (color_b[1] - color_a[1]) * progress)
     b = int(color_a[2] + (color_b[2] - color_a[2]) * progress)
@@ -112,8 +66,7 @@ def interpolate_color(color_a, color_b, progress):
 class Display:
     """
     Owns all visual state and the render loop. Call run() to start the
-    Pygame window and enter the main loop (blocks until quit). External
-    code (eventually brain.py / main.py) interacts via the public methods:
+    Pygame window (blocks until quit). Other code (main.py) interacts via:
       set_state(state), show_reminder(reminder), dismiss_reminder()
     """
 
@@ -124,50 +77,41 @@ class Display:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.NOFRAME)
         self.clock = pygame.time.Clock()
 
-        self.font_primary = pygame.font.Font(FONT_PATH, 38)  # regular weight — this was the preferred one from the comparison
+        self.font_primary = pygame.font.Font(FONT_PATH, 38)
         self.font_secondary = pygame.font.Font(FONT_PATH, 18)
         self.font_secondary.set_bold(False)
         self.font_reminder_time = pygame.font.Font(FONT_PATH, 42)
         self.font_reminder_message = pygame.font.Font(FONT_PATH, 22)
-
-        # dedicated emoji font for weather icons — Rubik has no emoji glyphs
-        # at all (confirmed by direct glyph-table inspection, every weather
-        # icon character came back MISSING), so icons need a real color
-        # emoji font rather than the text font
-        self.font_emoji = pygame.font.Font(EMOJI_FONT_PATH, 32)
+        self.font_emoji = pygame.font.Font(EMOJI_FONT_PATH, 32)  # Rubik has no emoji glyphs, needs a real color emoji font
 
         self.starfield = Starfield(SCREEN_W, SCREEN_H)
         self.orb = Orb(ORB_SIZE, ORB_COLORS)
         self.orbit_system = OrbitSystem()
 
-        # ---- state machine ----
+        # state machine
         self.current_state = "sleep"
         self.transition_from_state = None
         self.transition_start_time = 0
         self.transition_duration = 0.6
 
-        # ---- breathing ----
-        # (pure function of time.time(), no instance state needed)
-
-        # ---- touch pulse ----
+        # touch pulse
         self.touch_pulse_active = False
         self.touch_pulse_start_time = 0
         self.last_touch_pulse_time = 0
 
-        # ---- orb horizontal position (for reminder slide) ----
+        # orb horizontal position (for reminder slide)
         self.orb_target_x_ratio = CENTER_X_RATIO
         self.orb_current_x_ratio = CENTER_X_RATIO
 
-        # ---- info panel ----
+        # info panel
         self.info_panel_visible = False
         self.info_panel_show_time = 0
         self.info_fade_progress = 0.0
 
-        # cached weather, refreshed at most every 10 minutes
         self.cached_weather_str = "Loading weather..."
         self.last_weather_fetch = 0
 
-        # ---- reminder panel ----
+        # reminder panel
         self.reminder_panel_visible = False
         self.reminder_data = None
         self.reminder_fade_progress = 0.0
@@ -175,10 +119,11 @@ class Display:
         self.running = True
 
     # ------------------------------------------------------------------
-    # PUBLIC API — these are what brain.py / main.py will call
+    # PUBLIC API
     # ------------------------------------------------------------------
 
     def set_state(self, state):
+        """Switch the orb to a new emotional state, crossfading from the current one."""
         if state not in ORB_COLORS:
             print(f"Warning: unknown state '{state}', ignoring")
             return
@@ -189,13 +134,15 @@ class Display:
         self.current_state = state
 
     def show_reminder(self, reminder):
-        """
-        reminder: a dict matching reminders.py's actual schema —
-        expects at least 'time' (e.g. "14:30") and 'message' keys.
-        """
+        """reminder: dict with at least 'time' (e.g. '14:30') and 'message' keys."""
         self.reminder_data = reminder
         self.reminder_panel_visible = True
         self.orb_target_x_ratio = REMINDER_LEFT_X_RATIO
+
+    def dismiss_reminder(self):
+        """Hides the reminder panel and returns the orb to sleep."""
+        self.reminder_panel_visible = False
+        self.set_state("sleep")
 
     def stop(self):
         self.running = False
@@ -233,7 +180,6 @@ class Display:
 
     def _on_tap(self, x, y):
         if self.reminder_panel_visible:
-            # any tap while a reminder is showing dismisses it, same as tkinter version
             self.dismiss_reminder()
             return
 
@@ -244,17 +190,14 @@ class Display:
                 self.touch_pulse_start_time = now
                 self.last_touch_pulse_time = now
 
-        # tapping anywhere (orb or not) also reveals the info panel,
-        # same behavior as the tkinter version
+        # tapping anywhere also reveals the info panel
         self.info_panel_visible = True
         self.info_panel_show_time = time.time()
 
     def _is_tap_on_orb(self, x, y):
         orb_center_x = SCREEN_W * self.orb_current_x_ratio
         orb_center_y = SCREEN_H // 2
-        # generous margin (30%) makes it easier to actually hit on a touchscreen,
-        # same reasoning as the tkinter version
-        tap_radius = (ORB_SIZE / 2) * 1.3
+        tap_radius = (ORB_SIZE / 2) * 1.3  # generous margin, easier to hit on a touchscreen
         distance = math.sqrt((x - orb_center_x) ** 2 + (y - orb_center_y) ** 2)
         return distance <= tap_radius
 
@@ -275,10 +218,11 @@ class Display:
             self.touch_pulse_active = False
             return 0.0
         progress = elapsed / TOUCH_PULSE_DURATION
-        boost_curve = math.sin(progress * math.pi)  # rises then falls smoothly
+        boost_curve = math.sin(progress * math.pi)
         return boost_curve * TOUCH_PULSE_MAX_BOOST
 
     def _get_cached_weather(self):
+        """Refreshes weather at most once every 10 minutes, keeps the last known value if a fetch fails."""
         now = time.time()
         if now - self.last_weather_fetch > 600:
             try:
@@ -287,29 +231,39 @@ class Display:
                 if data:
                     self.cached_weather_str = f"{data['temp']}\u00b0F  {data['description'].title()}"
             except Exception:
-                pass  # keep showing the last known value if the fetch fails
+                pass
             self.last_weather_fetch = now
         return self.cached_weather_str
+
+    def get_sleep_brightness_multiplier_is_night(self):
+        """True between 11pm and 7am, used to make the sleep orb invisible at night."""
+        hour = datetime.now().hour
+        return hour >= 23 or hour < 7
+
+    def _get_effective_transition_duration(self):
+        """
+        Any transition involving 'sleep' uses a much faster duration
+        (0.15s instead of the normal 0.6s). Sleep's near-white/invisible
+        color blends into a muddy, washed-out color partway through a
+        normal-speed crossfade with any brighter state -- this isn't a
+        bug (the blend math is correct), it's just an inherent visual
+        side effect of that specific color combination, so the fix is
+        making the transition fast enough that it's not noticeable.
+        """
+        if self.transition_from_state is not None:
+            if "sleep" in (self.transition_from_state, self.current_state):
+                return 0.15
+        return self.transition_duration
 
     # ------------------------------------------------------------------
     # RENDER
     # ------------------------------------------------------------------
-
-    def get_sleep_brightness_multiplier_is_night(self):
-        hour = datetime.now().hour
-        return hour >= 23 or hour < 7
 
     def _render_frame(self, now, dt):
         self.screen.fill(COLOR_BG)
 
         core_rgb = self._get_current_core_rgb_for_drawing(now)
 
-        # starfield, drawn before the orb so the orb naturally occludes
-        # whatever stars sit behind it. Fixed white now (was core_rgb) —
-        # per request, only the orb and the orbiting particles should
-        # carry/crossfade the state color, so stars read as clearly
-        # distinct background elements rather than tinting along with
-        # everything else.
         self.starfield.update(dt, now)
         if self.current_state != "alarm":
             self.starfield.draw(self.screen, STAR_COLOR, now, alpha_multiplier=1.0)
@@ -320,37 +274,23 @@ class Display:
         self._update_and_draw_reminder_panel(now)
 
     def _get_current_core_rgb_for_drawing(self, now):
+        """The orb's current blended color, used to tint the orbiting particles."""
         target_core, _ = ORB_COLORS[self.current_state]
 
         if self.transition_from_state is not None:
             elapsed = now - self.transition_start_time
             progress = min(elapsed / self._get_effective_transition_duration(), 1.0)
             from_core, _ = ORB_COLORS[self.transition_from_state]
-            result = interpolate_color(from_core, target_core, progress)
-        else:
-            result = target_core
+            return interpolate_color(from_core, target_core, progress)
 
-        return result
+        return target_core
 
     def _draw_orb(self, now, dt, core_rgb):
         state = self.current_state
 
         if self.transition_from_state is not None:
             elapsed = now - self.transition_start_time
-            
-            # hard-coded special case: sleep<->idle produces a visibly muddy
-            # blend partway through (proven correct math, not a bug -- blending
-            # near-white into saturated blue just looks washed out at ~50% mix).
-            # Rather than chase the color theory further, just make this one
-            # pair's transition much faster so the muddy window is barely visible.
-            pair = {self.transition_from_state, state}
-            if pair == {"sleep", "idle"}:
-                effective_duration = 0.15
-            else:
-                effective_duration = self._get_effective_transition_duration()
-                progress = min(elapsed / effective_duration, 1.0)
-            
-            progress = min(elapsed / effective_duration, 1.0)
+            progress = min(elapsed / self._get_effective_transition_duration(), 1.0)
 
             if progress >= 1.0:
                 self.transition_from_state = None
@@ -361,14 +301,11 @@ class Display:
                 base_orb = old_frame.copy()
                 temp = new_frame.copy()
                 temp.set_alpha(int(255 * progress))
-                base_orb.set_alpha(255)
                 base_orb.blit(temp, (0, 0))
         else:
             base_orb = self.orb.get_current_frame(state, core_rgb)
 
         scale = self._get_breathing_scale() + self._get_touch_pulse_boost()
-
-        # ease the orb's horizontal position toward its target
         self.orb_current_x_ratio += (self.orb_target_x_ratio - self.orb_current_x_ratio) * ORB_POSITION_EASE_SPEED
 
         new_size = int(base_orb.get_width() * scale)
@@ -379,10 +316,8 @@ class Display:
         paste_x = orb_center_x - (new_size // 2)
         paste_y = orb_center_y - (new_size // 2)
 
-        # orbiting particles: drawn in three passes around the orb blit so
-        # draw order itself produces correct occlusion — particles "behind"
-        # the orb this frame are drawn first (and get covered by the orb),
-        # particles "in front" are drawn last (and sit visibly on top)
+        # particles behind the orb draw first, then the orb, then particles in front --
+        # draw order alone produces correct occlusion
         self.orbit_system.update(dt, state)
         if state != "alarm":
             behind, in_front = self.orbit_system.get_split_particles(
@@ -405,26 +340,19 @@ class Display:
             self.info_fade_progress = target_progress
 
         if self.info_fade_progress <= 0.01:
-            return  # nothing visible, skip rendering text entirely
+            return
 
         primary_color = interpolate_color(COLOR_BG, COLOR_PRIMARY_TEXT, self.info_fade_progress)
         secondary_color = interpolate_color(COLOR_BG, COLOR_SECONDARY_TEXT, self.info_fade_progress)
 
-        # time — top-left, primary weight
         time_str = datetime.now().strftime("%-I:%M %p")
         time_surf = self.font_primary.render(time_str, True, primary_color)
         self.screen.blit(time_surf, (20, 14))
 
-        # date — subheading below time, secondary weight
         date_str = datetime.now().strftime("%B %d")
         date_surf = self.font_secondary.render(date_str, True, secondary_color)
         self.screen.blit(date_surf, (20, 64))
 
-        # temperature + weather icon — top-right, primary weight.
-        # Icon rendered SEPARATELY with the emoji font and blitted next to
-        # the temp number — Rubik has no emoji glyphs at all (confirmed via
-        # direct glyph-table inspection), so trying to render the icon
-        # character through font_primary just produced nothing visible.
         weather_str = self._get_cached_weather()
         weather_icons = {
             "clear": "\u2600", "sunny": "\u2600",
@@ -448,24 +376,8 @@ class Display:
 
         temp_surf = self.font_primary.render(temp_text, True, primary_color)
 
-        # NotoColorEmoji ignores the requested point size entirely and
-        # always returns a fixed 136x128px bitmap glyph (confirmed by
-        # direct testing — requesting 16px through 48px all produced the
-        # identical 136x128 surface). That's why the icon rendered nearly
-        # 4x bigger than the temp text next to it. Scaling it down
-        # manually to match the temp text's height fixes this regardless
-        # of whatever native size the font happens to return.
-        # NotoColorEmoji ignores the requested point size (confirmed
-        # earlier) AND ignores the requested render color entirely (just
-        # confirmed too: rendering the same glyph with color=(255,255,255)
-        # vs color=(20,20,20) produced byte-identical pixels). That's
-        # exactly why this icon wasn't fading along with everything
-        # else — primary_color was being passed in but silently discarded
-        # by the font itself, so the icon always rendered at full native
-        # brightness no matter what info_fade_progress said. The fix is
-        # applying alpha directly to the rendered SURFACE (which Pygame
-        # does respect, verified directly), rather than relying on the
-        # render() color argument this font doesn't honor.
+        # NotoColorEmoji ignores both requested size and color, so scale and
+        # fade the rendered surface manually instead of trusting render() args
         icon_raw = self.font_emoji.render(icon, True, primary_color)
         icon_target_height = temp_surf.get_height()
         icon_scale = icon_target_height / icon_raw.get_height()
@@ -475,7 +387,6 @@ class Display:
         )
         icon_surf.set_alpha(int(255 * self.info_fade_progress))
 
-        # lay out icon to the left of the temp number, right-aligned as a pair
         pair_width = icon_surf.get_width() + 8 + temp_surf.get_width()
         pair_right_x = SCREEN_W - 20
         icon_x = pair_right_x - pair_width
@@ -489,24 +400,15 @@ class Display:
 
     def _update_and_draw_reminder_panel(self, now):
         """
-        Handles BOTH the fade animation and the sequenced dismiss logic.
-
-        The sequencing rule (ported directly from the confirmed-working
-        tkinter version): when reminder_panel_visible goes False, the
-        text fade-out starts immediately, but the orb does NOT start
-        sliding back to center until that fade has fully reached 0.0.
-        An earlier version moved both simultaneously and it looked
-        wrong/rushed — text and orb overlapping mid-transition read as
-        broken rather than intentional. We watch for the exact frame the
-        fade completes and only then re-target the orb's position.
+        Handles the fade animation and the sequenced dismiss: text fades
+        out first, and only once that fade fully completes does the orb
+        slide back to center (doing both at once looked rushed/broken).
         """
         target_progress = 1.0 if self.reminder_panel_visible else 0.0
         self.reminder_fade_progress += (target_progress - self.reminder_fade_progress) * REMINDER_FADE_SPEED
         if abs(self.reminder_fade_progress - target_progress) < 0.01:
             self.reminder_fade_progress = target_progress
 
-        # the exact moment the fade-out finishes, trigger the slide-back —
-        # this only fires once, since reminder_data gets cleared right after
         if not self.reminder_panel_visible and self.reminder_fade_progress == 0.0:
             if self.reminder_data is not None:
                 self.orb_target_x_ratio = CENTER_X_RATIO
@@ -535,12 +437,7 @@ class Display:
         self.screen.blit(msg_surf, (int(SCREEN_W * 0.62), 260))
 
     def _render_wrapped_text(self, text, font, color, max_width):
-        """
-        Pygame has no built-in text-wrapping the way tkinter's
-        width= parameter on create_text did, so this does it manually:
-        breaks the message into lines that each fit within max_width,
-        then renders all lines onto one combined surface.
-        """
+        """Manual word-wrap, since Pygame has no built-in text wrapping."""
         words = text.split(" ")
         lines = []
         current_line = ""
@@ -566,31 +463,6 @@ class Display:
             y += surf.get_height() + 4
 
         return combined
-
-
-    def _get_effective_transition_duration(self):
-        """
-        Hard-coded special case: a sleep<->idle transition produces a
-        visibly muddy/washed-out blend partway through. This was
-        investigated thoroughly: the alpha-fade math, the blit compositing,
-        and the per-state fade curves are all proven correct (verified with
-        direct pixel comparisons and hand-computed "over" blending) -- the
-        muddy appearance is just the genuine, correct result of blending a
-        near-white color into a saturated blue at ~50% mix, not a bug.
-        Rather than continue chasing a fix for an artifact that isn't
-        actually broken, this transition is just sped up so the muddy
-        window is on screen too briefly to notice.
-        """
-        if self.transition_from_state is not None:
-            pair = {self.transition_from_state, self.current_state}
-            if pair == {"sleep", "idle"}:
-                return 0.15
-        return self.transition_duration
-    
-    def dismiss_reminder(self):
-        self.reminder_panel_visible = False
-        self.set_state("sleep")
-
 
 
 if __name__ == "__main__":
