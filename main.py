@@ -30,7 +30,14 @@ model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
 # ------------------------------------------------------------------
 
 def listen_for_wake_word(display):
+    """Listens for the wake word forever. On detection, either handles
+    an active alarm (listens for a stop phrase) or starts a normal
+    conversation (listens for a command, asks Gemini, speaks the reply,
+    loops on follow-ups)."""
     global model
+
+    # calibrate ambient noise once at startup, with a visual cue (think
+    # state) so the user knows not to talk yet
     display.set_state("think")
     recognizer = sr.Recognizer()
     with sr.Microphone(device_index=1) as source:
@@ -48,7 +55,10 @@ def listen_for_wake_word(display):
     while True:
         try:
             audio_array = stream.read(3528)
-        except OSError as e:
+        except OSError:
+            # mic stream occasionally overflows on this hardware -- known,
+            # harmless (only affects wake-word listening, never the actual
+            # command capture), just reopen and keep going
             try:
                 stream.stop_stream()
                 stream.close()
@@ -61,6 +71,9 @@ def listen_for_wake_word(display):
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.3:
+
+            # an alarm is currently going off -- skip the normal
+            # conversation flow, just listen for a stop phrase
             if display.current_state == "alarm":
                 display.set_state("idle")
                 stream.stop_stream()
@@ -72,6 +85,10 @@ def listen_for_wake_word(display):
                     display.dismiss_reminder()
                 else:
                     display.set_state("alarm")
+
+                # recreate the model to clear its internal rolling buffer,
+                # otherwise leftover recent speech can cause a false
+                # wake-word retrigger right after this
                 model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
                 stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
                 continue
@@ -90,14 +107,13 @@ def listen_for_wake_word(display):
                 if command_text == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
-                    #time.sleep(3)
                     display.set_state("sleep")
                     break
+
                 response, follow_up = gemini.ask_gemini(command_text, history)
                 if response == None:
                     display.set_state("error")
                     speak(random.choice(ERROR_RESPONSES))
-                    #time.sleep(3)
                     display.set_state("sleep")
                     break
 
@@ -109,10 +125,8 @@ def listen_for_wake_word(display):
 
                 if follow_up:
                     display.set_state("idle")
-                    #time.sleep(3)
                     continue
                 else:
-                    #time.sleep(3)
                     display.set_state("sleep")
                     break
 
@@ -124,6 +138,7 @@ def listen_for_wake_word(display):
 # ------------------------------------------------------------------
 
 def listen_for_command(display, recognizer):
+    """Listens for one spoken command, returns the transcribed text or None on timeout/failure."""
     with sr.Microphone(device_index=1) as source:
         try:
             audio = recognizer.listen(source, timeout=5)
@@ -136,6 +151,10 @@ def listen_for_command(display, recognizer):
 # ------------------------------------------------------------------
 
 def check_reminders_loop(display):
+    """Checks for due reminders every 10 seconds. Only fires one once the
+    orb is at rest AND motion is detected nearby, so it never alarms into
+    an empty room. Plays the alarm sound on a loop until dismissed
+    (screen tap or the wake-word stop-phrase path above)."""
     reminders.clear_old_reminders()
     while True:
         if display.current_state == "sleep":
