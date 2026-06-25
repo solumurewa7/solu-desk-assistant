@@ -10,7 +10,7 @@ import threading
 import time
 import speech_recognition as sr
 import random
-from tts import speak, play_sound
+from tts import speak, play_sound, start_alarm_sound, stop_alarm_sound
 import gemini
 import reminders
 import RPi.GPIO as GPIO
@@ -133,8 +133,14 @@ def check_reminders_loop(display):
 
                 display.show_reminder(reminder)
                 display.set_state("alarm")
+
+                alarm_process = start_alarm_sound("sounds/alarm.mp3")
                 while display.reminder_data is not None:
-                    play_sound("sounds/alarm.mp3")
+                    if alarm_process.poll() is not None:
+                        alarm_process = start_alarm_sound("sounds/alarm.mp3")
+                    time.sleep(0.2)
+
+                stop_alarm_sound(alarm_process)
                 reminders.mark_completed(reminder["id"])
         time.sleep(30)
 
