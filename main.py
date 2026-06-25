@@ -158,7 +158,7 @@ def check_reminders_loop(display):
 
                 stop_alarm_sound(alarm_process)
                 reminders.mark_completed(reminder["id"])
-        time.sleep(30)
+        time.sleep(10)
 
 
 # ------------------------------------------------------------------
