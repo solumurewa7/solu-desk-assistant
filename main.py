@@ -62,6 +62,21 @@ def listen_for_wake_word(display):
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
         if score["hey_soh_loo"] > 0.3:
+            if display.current_state == "alarm":
+                display.set_state("idle")
+                stream.stop_stream()
+                stream.close()
+
+                command_text = listen_for_command(display, recognizer)
+
+                if command_text is not None and ("stop" in command_text.lower() or "alarm" in command_text.lower()):
+                    display.dismiss_reminder()
+                else:
+                    display.set_state("alarm")
+
+                stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+                continue
+
             display.set_state("idle")
             play_sound("sounds/startup.mp3")
             stream.stop_stream()
