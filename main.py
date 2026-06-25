@@ -122,6 +122,7 @@ def listen_for_command(display, recognizer):
 # ------------------------------------------------------------------
 
 def check_reminders_loop(display):
+    reminders.clear_old_reminders()
     while True:
         if display.current_state == "sleep":
             due = reminders.check_due_reminders()
