@@ -1,3 +1,8 @@
+"""
+display.py — Solu's visual layer (orb, starfield, info panel, reminder panel).
+Run directly to preview the display on its own: python3 display.py
+"""
+
 import pygame
 import math
 import time
@@ -180,6 +185,7 @@ class Display:
     # ------------------------------------------------------------------
 
     def _on_tap(self, x, y):
+        print(f"TAP at ({x},{y}), current_state={self.current_state}, active_speech_process={self.active_speech_process}")
         if self.current_state == "speak":
             # tapping anywhere while Solu is talking stops the speech immediately
             if self.active_speech_process is not None and self.active_speech_process.poll() is None:
