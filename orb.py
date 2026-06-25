@@ -2,9 +2,10 @@ import pygame
 
 
 def generate_orb_surface(core_rgb, edge_rgb, size, fade_start_fraction=0.97):
+    """Builds a radial-gradient orb surface, sharp edge (fades only in the outer 3% of the radius)."""
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     center = size // 2
-    steps = center  # one gradient step per pixel of radius -- eliminates banding
+    steps = center  # one step per pixel of radius, avoids visible banding
 
     for i in range(steps, 0, -1):
         radius = int(center * (i / steps))
@@ -25,9 +26,10 @@ def generate_orb_surface(core_rgb, edge_rgb, size, fade_start_fraction=0.97):
     return surf
 
 
-
-
 class Orb:
+    """Caches one pre-rendered gradient surface per state. The sleep
+    surface is the only one that ever regenerates, since it's dimmed to
+    fully invisible at night."""
 
     def __init__(self, orb_size, orb_colors):
         self.orb_size = orb_size
@@ -37,37 +39,26 @@ class Orb:
         for state, (core, edge) in orb_colors.items():
             self.cached_frames[state] = generate_orb_surface(core, edge, orb_size)
 
-        # tracks whether the cached sleep frame currently reflects day or
-        # night brightness, so we only regenerate it when this actually
-        # changes rather than every frame
-        self.sleep_is_dimmed = False
+        self.sleep_is_dimmed = False  # tracks whether the cached sleep frame is currently the night (invisible) version
 
     def update(self, dt):
-        # nothing animates on the orb itself anymore — kept as a no-op so
-        # the caller's existing orb.update(dt) call doesn't need to change
-        pass
+        pass  # nothing animates on the orb's own texture, kept for interface compatibility
 
     def get_current_frame(self, state, core_rgb):
-        """Returns the cached, fully-built surface for this state."""
+        """Returns the cached surface for this state."""
         return self.cached_frames[state]
-    
+
     def refresh_sleep_frame(self, is_night):
-        """
-        Regenerates ONLY the cached sleep orb texture, scaled to either
-        full brightness (day) or heavily dimmed (night). Called from
-        display.py every frame, but only does real work the moment the
-        day/night boundary is actually crossed — otherwise is_night
-        matches self.sleep_is_dimmed already and this returns immediately.
-        """
+        """Regenerates the cached sleep frame only when day/night actually
+        changes -- full brightness during the day, fully invisible at night."""
         if is_night == self.sleep_is_dimmed:
-            return  # already in the correct state, nothing to do
+            return
 
         core, edge = self.orb_colors["sleep"]
 
         if is_night:
-            multiplier = 0  # way way way dimmer at night
-            core = tuple(int(c * multiplier) for c in core)
-            edge = tuple(int(c * multiplier) for c in edge)
+            core = (0, 0, 0)
+            edge = (0, 0, 0)
 
         self.cached_frames["sleep"] = generate_orb_surface(core, edge, self.orb_size)
         self.sleep_is_dimmed = is_night
