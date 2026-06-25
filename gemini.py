@@ -2,8 +2,8 @@ from google import genai
 from google.genai import types
 import json
 import os
-from config import GEMINI_API_KEY
 from datetime import datetime
+from config import GEMINI_API_KEY
 from weather import DEFAULT_CITY
 from reminders import add_reminder
 
@@ -79,35 +79,32 @@ just a personal reminder, in which case use False.
 Only include this tag once you have a real date and time, never a vague
 one. If you don't have enough information yet, do not include this tag
 at all, and ask the user for what's missing instead (using FOLLOWUP:TRUE).
-
-
 """
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 def load_memory():
     if not os.path.exists(MEMORY_FILE):
-        os.makedirs("data", exist_ok=True) # create data folder if DNE
-        with open (MEMORY_FILE, "w") as f:
-            json.dump([], f) # create empty reminders file
-    with open (MEMORY_FILE, "r") as f:
+        os.makedirs("data", exist_ok=True)
+        with open(MEMORY_FILE, "w") as f:
+            json.dump([], f)
+    with open(MEMORY_FILE, "r") as f:
         return json.load(f)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 def save_memory(memory):
-    with open (MEMORY_FILE, "w") as f:
+    with open(MEMORY_FILE, "w") as f:
         json.dump(memory, f, indent=2)
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 def add_to_memory(fact):
     memories = load_memory()
     memories.append(fact)
     save_memory(memories)
 
-
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 def remove_from_memory(fact):
     memories = load_memory()
@@ -118,33 +115,36 @@ def remove_from_memory(fact):
             return True
     return False
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
-
-from datetime import datetime
-from weather import DEFAULT_CITY
+# ------------------------------------------------------------------
 
 def build_system_prompt():
+    """Adds the real current date/time, location, and saved memory facts to the base prompt."""
     memories = load_memory()
     system_prompt = SOLU_SYSTEM_PROMPT
-    
+
     current_time = datetime.now().strftime("%I:%M %p on %A, %B %d, %Y")
     system_prompt += f"\n\nThe current local date and time is {current_time}. The user is located in {DEFAULT_CITY}, Texas. Always answer time/date/location-based questions using this real information, not assumptions or generic defaults."
-    
+
     if memories:
         system_prompt += "\n\nThings to remember about the user:\n"
         for memory in memories:
             system_prompt += f"- {memory}\n"
-    return system_prompt   
+    return system_prompt
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 def ask_gemini(prompt, history):
+    """
+    Sends prompt + conversation history to Gemini, parses out the
+    REMINDER and FOLLOWUP tags from the response, creates the reminder
+    if one was included, and returns (clean_text, expecting_reply).
+    """
     try:
         system_prompt = build_system_prompt()
         search_tool = types.Tool(google_search=types.GoogleSearch())
-        
+
         contents = history + [{"role": "user", "parts": [{"text": prompt}]}]
-                
+
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=contents,
@@ -154,8 +154,7 @@ def ask_gemini(prompt, history):
             )
         )
 
-
-        # Example: Got it, I'll remind you to call mom on June 25th at 2:30 PM.<<<REMINDER:call mom|2026-06-25|14:30|True>>><<<FOLLOWUP:FALSE>>>
+        # example response: Got it, I'll remind you to call mom on June 25th at 2:30 PM.<<<REMINDER:call mom|2026-06-25|14:30|True>>><<<FOLLOWUP:FALSE>>>
         text = response.text.strip()
 
         if "<<<REMINDER:" in text:
@@ -176,9 +175,6 @@ def ask_gemini(prompt, history):
                     print(f"Warning: failed to add reminder (message={message!r}, date={date!r}, time={time!r})")
 
             text = (before_tag + after_tag).strip()
-            
-            
-
 
         if text.endswith("<<<FOLLOWUP:TRUE>>>"):
             clean_text = text[:-len("<<<FOLLOWUP:TRUE>>>")].strip()
@@ -190,7 +186,7 @@ def ask_gemini(prompt, history):
     except:
         return None, False
 
-#-------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 def generate_weather_response(weather_data, history):
     prompt = f"Give a weather report in your personality based on this data: {weather_data}"
@@ -206,10 +202,8 @@ def generate_weather_response(weather_data, history):
         return response.text
     except:
         return None
-    
-#-------------------------------------------------------------------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------
 
 def reset_history():
     return []
-
-#-------------------------------------------------------------------------------------------------------------------------------------------
