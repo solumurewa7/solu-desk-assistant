@@ -49,7 +49,6 @@ def listen_for_wake_word(display):
         try:
             audio_array = stream.read(3528)
         except OSError as e:
-            print("Mic read error, recovering:", e)
             try:
                 stream.stop_stream()
                 stream.close()
@@ -154,7 +153,7 @@ def check_reminders_loop(display):
                 while display.reminder_data is not None:
                     if alarm_process.poll() is not None:
                         alarm_process = start_alarm_sound("sounds/alarm.mp3")
-                    time.sleep(1)
+                    time.sleep(0.8)
 
                 stop_alarm_sound(alarm_process)
                 reminders.mark_completed(reminder["id"])
