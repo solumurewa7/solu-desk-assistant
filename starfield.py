@@ -10,7 +10,7 @@ occludes whatever stars sit behind it. Hidden during the alarm state.
 import random
 import math
 
-NUM_STARS = 70
+NUM_STARS = 35
 
 MIN_STAR_RADIUS = 1
 MAX_STAR_RADIUS = 2
