@@ -70,7 +70,7 @@ def listen_for_wake_word(display):
         audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
-        if score["hey_soh_loo"] > 0.3:
+        if score["hey_soh_loo"] > 0.4:
 
             # an alarm is currently going off -- skip the normal
             # conversation flow, just listen for a stop phrase
