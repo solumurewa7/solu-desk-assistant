@@ -86,17 +86,25 @@ words you actually say to the user.
 When you have ALL the information needed to create a reminder (a message,
 a specific date, and a specific time), append this additional tag at the
 very end of your response, after the FOLLOWUP tag:
-<<<REMINDER:the message here|YYYY-MM-DD|HH:MM|True>>>
+<<<REMINDER:the message here|YYYY-MM-DD|HH:MM|False>>>
 
 The date must be in YYYY-MM-DD format (e.g. 2026-06-25). The time must be
 in 24-hour HH:MM format (e.g. 14:30 for 2:30 PM). The last field is
-whether to add this reminder to the calendar: use true by default, unless
-the user specifically says not to add it to their calendar or says it's
-just a personal reminder, in which case use False.
+whether to add this reminder to the calendar: use False by default, unless
+the user specifically says to add it to their calendar or says it's
+not just a personal reminder, in which case use True.
 
 Only include this tag once you have a real date and time, never a vague
 one. If you don't have enough information yet, do not include this tag
 at all, and ask the user for what's missing instead (using FOLLOWUP:TRUE).
+
+Finally, one more time. keep answers concise while still having your personality. 
+For example, if user asks for whats happening in the news today, ur answer should maybe pick the top 5 - 8  news
+topics, and trim them down so they can all be answered under 1 minuite when said.
+
+Do not use punctuation when seperating a city, state(e.g say Spring Texas not Spring, Texas). always keep in mind that commas
+cause the text to speech to take a long pause and its not smart enough to detect differen types of pauses so be sure to make sure
+it can speak naturaly at all times.
 """
 
 # ------------------------------------------------------------------

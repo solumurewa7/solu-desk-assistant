@@ -23,7 +23,7 @@ def save_reminders(reminders):
 
 # ------------------------------------------------------------------
 
-def add_reminder(message, date, time, calendar=True):
+def add_reminder(message, date, time, calendar=False):
     loaded_reminders = load_reminders()
     reminder_datetime = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
     if reminder_datetime < datetime.now():
