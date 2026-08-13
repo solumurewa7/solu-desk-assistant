@@ -235,9 +235,9 @@ class Display:
         return boost_curve * TOUCH_PULSE_MAX_BOOST
 
     def _get_cached_weather(self):
-        """Refreshes weather at most once every 10 minutes, keeps the last known value if a fetch fails."""
+        """Refreshes weather at most once every 5 minutes, keeps the last known value if a fetch fails."""
         now = time.time()
-        if now - self.last_weather_fetch > 600:
+        if now - self.last_weather_fetch > 300:
             try:
                 from weather import get_weather
                 data = get_weather()
@@ -249,9 +249,9 @@ class Display:
         return self.cached_weather_str
 
     def get_sleep_brightness_multiplier_is_night(self):
-        """True between 11pm and 7am, used to make the sleep orb invisible at night."""
+        """True between 9pm and 8am, used to make the sleep orb invisible at night."""
         hour = datetime.now().hour
-        return hour >= 23 or hour < 7
+        return hour >= 21 or hour < 8
 
     def _get_effective_transition_duration(self):
         """

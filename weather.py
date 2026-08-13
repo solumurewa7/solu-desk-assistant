@@ -4,7 +4,7 @@ from config import OPENWEATHER_API_KEY
 
 BASE_URL = "https://api.openweathermap.org/data/2.5/weather?"
 API_KEY = OPENWEATHER_API_KEY
-DEFAULT_CITY = "Spring"
+DEFAULT_CITY = "College Station"
 
 
 def get_weather(city=DEFAULT_CITY):
