@@ -209,7 +209,8 @@ def ask_gemini(prompt, history):
             clean_text = text[:-len("<<<FOLLOWUP:FALSE>>>")].strip()
             return clean_text, False
         return text, False
-    except:
+    except Exception as e:
+        print(f"Gemini error: {e!r}")
         return None, False
 
 # ------------------------------------------------------------------

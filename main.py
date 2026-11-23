@@ -6,6 +6,7 @@ import pyaudio
 import numpy as np
 from scipy.signal import resample
 from display import Display
+import sys
 import threading
 import time
 import speech_recognition as sr
@@ -14,6 +15,8 @@ from tts import speak, play_sound, start_alarm_sound, stop_alarm_sound, start_sp
 import gemini
 import reminders
 import RPi.GPIO as GPIO
+
+sys.stdout.reconfigure(line_buffering=True)  # print() shows up live in journalctl instead of sitting in a buffer
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(17, GPIO.IN)
@@ -26,6 +29,8 @@ ERROR_RESPONSES = [
 ]
 
 model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
+
+WAKE_THRESHOLD = 0.4  # model confidence (0 to 1) needed to trigger: lower is easier to wake, higher means fewer false triggers
 
 # ------------------------------------------------------------------
 
@@ -52,10 +57,20 @@ def listen_for_wake_word(display):
 
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+
+    # TEMP DIAGNOSTIC: once a minute, log dropped-audio events, the loudest mic
+    # level, and the highest wake word score, to tell a mic/CPU problem apart
+    # from a threshold problem. Safe to remove once the wake word is stable.
+    overflow_count = 0
+    peak_level = 0.0
+    max_score = 0.0
+    last_heartbeat = time.time()
+
     while True:
         try:
             audio_array = stream.read(3528)
         except OSError:
+            overflow_count += 1
             # mic stream occasionally overflows on this hardware -- known,
             # harmless (only affects wake-word listening, never the actual
             # command capture), just reopen and keep going
@@ -70,7 +85,21 @@ def listen_for_wake_word(display):
         audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
         resampled = resample(audio_array_int16, 1280).astype(np.int16)
         score = model.predict(resampled)
-        if score["hey_soh_loo"] > 0.6:
+        wake_score = score["hey_soh_loo"]
+
+        # TEMP DIAGNOSTIC (see above)
+        peak_level = max(peak_level, float(np.sqrt(np.mean(audio_array_int16.astype(np.float32) ** 2))))
+        max_score = max(max_score, wake_score)
+        if 0.15 < wake_score <= WAKE_THRESHOLD:
+            print(f"wake word near miss: score {wake_score:.2f} (threshold {WAKE_THRESHOLD})")
+        if time.time() - last_heartbeat >= 60:
+            print(f"[mic check] dropped-audio events: {overflow_count}, loudest level: {peak_level:.0f}, highest wake score: {max_score:.2f}")
+            overflow_count = 0
+            peak_level = 0.0
+            max_score = 0.0
+            last_heartbeat = time.time()
+
+        if wake_score > WAKE_THRESHOLD:
 
             # an alarm is currently going off -- skip the normal
             # conversation flow, just listen for a stop phrase
@@ -163,7 +192,17 @@ def listen_for_command(display, recognizer):
             display.set_state("think")
             text = recognizer.recognize_google(audio)
             return text
-        except:
+        except sr.WaitTimeoutError:
+            print("listen: heard no speech before the timeout")
+            return None
+        except sr.UnknownValueError:
+            print("listen: heard audio but could not make out words")
+            return None
+        except sr.RequestError as e:
+            print(f"listen: speech service error: {e}")
+            return None
+        except Exception as e:
+            print(f"listen: unexpected error: {e!r}")
             return None
 
 # ------------------------------------------------------------------
