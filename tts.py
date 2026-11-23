@@ -1,3 +1,5 @@
+import asyncio
+import edge_tts
 from gtts import gTTS
 import subprocess
 import os
@@ -5,14 +7,30 @@ import sys
 
 AUDIO_DEVICE = "hw:0,0"
 
+EDGE_VOICE = "en-GB-RyanNeural"
+EDGE_RATE = "+0%"   # speed adjustment, e.g. "+8%" for slightly faster
+EDGE_TIMEOUT = 8    # seconds to wait on Edge before falling back to gTTS
+
+
+def generate_audio(text, path):
+    """Writes speech for text to an mp3 at path. Uses Edge TTS (Ryan voice),
+    and falls back to gTTS if Edge fails or times out (it's an unofficial service)."""
+    try:
+        asyncio.run(asyncio.wait_for(
+            edge_tts.Communicate(text, EDGE_VOICE, rate=EDGE_RATE).save(path),
+            timeout=EDGE_TIMEOUT,
+        ))
+    except Exception:
+        tts = gTTS(text=text, lang="en", tld="com", slow=False)
+        tts.save(path)
+
 
 def speak(text):
     """Blocking speech playback, used for short responses like error apologies."""
     temp_filename = "temp_speech.mp3"
 
     try:
-        tts = gTTS(text=text, lang="en", tld="com", slow=False)
-        tts.save(temp_filename)
+        generate_audio(text, temp_filename)
         subprocess.run(["mpg123", "-a", AUDIO_DEVICE, temp_filename])
     finally:
         if os.path.exists(temp_filename):
@@ -23,8 +41,7 @@ def start_speaking(text):
     """Non-blocking speech playback. Returns (process, temp_filename) so
     it can be interrupted (e.g. tapping the orb) and cleaned up via stop_speaking()."""
     temp_filename = f"temp_speech_{os.getpid()}_{id(text)}.mp3"
-    tts = gTTS(text=text, lang="en", tld="com", slow=False)
-    tts.save(temp_filename)
+    generate_audio(text, temp_filename)
     process = subprocess.Popen(["mpg123", "-a", AUDIO_DEVICE, temp_filename])
     return process, temp_filename
 
