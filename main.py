@@ -31,6 +31,7 @@ NEAR_MISS_SCORE = 0.15        # scores above this but under the threshold get lo
 MIN_ENERGY_THRESHOLD = 800    # floor for speech detection, calibration sometimes comes out too low
 COMMAND_TIMEOUT = 5           # seconds to start talking after the wake word
 PHRASE_TIME_LIMIT = 15        # max seconds for one command, so constant noise can't keep it listening forever
+PAUSE_THRESHOLD = 1.4         # seconds of quiet that count as "done talking" (library default 0.8 cut people off mid-sentence). Lower = snappier replies, higher = more room to pause
 SPEECH_SERVICE_TIMEOUT = 10   # seconds to wait on Google speech recognition
 MIC_CHECK_INTERVAL = 600      # seconds between [mic check] log lines
 
@@ -57,6 +58,7 @@ def voice_loop(display):
     mic = Mic()
     recognizer = sr.Recognizer()
     recognizer.operation_timeout = SPEECH_SERVICE_TIMEOUT
+    recognizer.pause_threshold = PAUSE_THRESHOLD
 
     # calibrate once at startup, orange (think) so the user knows not to talk yet
     display.set_state("think")
