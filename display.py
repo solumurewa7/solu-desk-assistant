@@ -1,14 +1,19 @@
 """
-display.py: Solu's screen. The orb, stardust and voice rings are drawn on the
-GPU (see gpu_orb.py). This file handles state, touch, and the info and
-reminder panels.
+display.py: Solu's screen.
+
+  Display  what main.py talks to. Holds the real state and runs the screen in
+           its own process, so drawing can never slow down the voice code.
+  Screen   the window itself: the orb, stardust and voice rings (drawn on the
+           GPU, see gpu_orb.py), touch, and the info and reminder panels.
 
 Preview on the Pi without the rest of Solu (stop solu.service first):
     DISPLAY=:0 python3 display.py --demo
 """
 
 import math
+import multiprocessing
 import os
+import queue
 import random
 import sys
 import threading
@@ -77,19 +82,28 @@ WEATHER_ICONS = {
 DEFAULT_WEATHER_ICON = "\U0001F321"
 
 
-class Display:
-    """
-    Owns all visual state and the render loop. Call run() to start the
-    window (blocks until quit). Other code (main.py) interacts via:
-      set_state(state), show_reminder(reminder), dismiss_reminder(),
-      claim_wake(), try_start_alarm(reminder)
-    Those are safe to call from any thread.
+def voice_level_target(state, speech_process, input_level_fn):
+    """Loudness that should drive the orb: Solu's own voice while speaking, yours while listening."""
+    try:
+        if state == "speak":
+            meter = getattr(speech_process, "level_meter", None)
+            return meter.level_at(time.time()) if meter is not None else 0.0
+        if state == "idle" and input_level_fn is not None:
+            return LISTEN_REACTION * float(input_level_fn())
+    except Exception:
+        pass
+    return 0.0
 
-    Optional hooks main.py can set:
-      active_speech_process  the playing speech; a tap stops it, and its
-                             level_meter (from tts.py) drives the voice rings
-      input_level_fn         returns mic loudness 0..1, so the orb reacts
-                             to you while it listens
+
+class Screen:
+    """
+    The window and render loop. Inside Solu it runs in its own process,
+    driven by Display. It also works standalone (demo, previews, tests),
+    where it reads active_speech_process and input_level_fn itself.
+
+    Hooks used when driven by Display:
+      external_level  returns the voice loudness to show
+      on_tap          called on every tap, so Display can act on it
     """
 
     def __init__(self, headless=False):
@@ -171,6 +185,8 @@ class Display:
         # own speak calls.
         self.active_speech_process = None
         self.input_level_fn = None
+        self.external_level = None
+        self.on_tap = None
 
     # ------------------------------------------------------------------
     # PUBLIC API
@@ -224,11 +240,14 @@ class Display:
     # MAIN LOOP
     # ------------------------------------------------------------------
 
-    def run(self):
+    def run(self, poll=None):
+        """Draws until quit. poll() runs once per frame, for incoming commands."""
         threading.Thread(target=self._weather_loop, daemon=True).start()
         last = time.perf_counter()
 
         while self.running:
+            if poll is not None:
+                poll()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -274,11 +293,14 @@ class Display:
     # ------------------------------------------------------------------
 
     def _on_tap(self, x, y):
+        if self.on_tap is not None:
+            self.on_tap()  # Display decides what the tap does to Solu; below is just the instant visual response
         if self.current_state == "speak":
             # tapping anywhere while Solu is talking stops the speech immediately
-            process = self.active_speech_process
-            if process is not None and process.poll() is None:
-                process.terminate()
+            if self.on_tap is None:
+                process = self.active_speech_process
+                if process is not None and process.poll() is None:
+                    process.terminate()
             self.set_state("sleep")
             return
 
@@ -332,17 +354,11 @@ class Display:
         return hour >= 21 or hour < 8
 
     def _voice_level(self, now, dt, state):
-        """Loudness that drives the orb: Solu's own voice while speaking, yours while listening."""
-        target = 0.0
-        if state == "speak":
-            meter = getattr(self.active_speech_process, "level_meter", None)
-            if meter is not None:
-                target = meter.level_at(now)
-        elif state == "idle" and self.input_level_fn is not None:
-            try:
-                target = LISTEN_REACTION * float(self.input_level_fn())
-            except Exception:
-                target = 0.0
+        """Smoothed loudness that drives the orb."""
+        if self.external_level is not None:
+            target = self.external_level()
+        else:
+            target = voice_level_target(state, self.active_speech_process, self.input_level_fn)
         rate = VOICE_ATTACK_RATE if target > self.voice_level else VOICE_RELEASE_RATE
         self.voice_level = approach(self.voice_level, min(max(target, 0.0), 1.0), rate, dt)
         return self.voice_level
@@ -504,6 +520,193 @@ class Display:
 
         return combined
 
+
+# ============================================================================
+# DISPLAY: what main.py talks to
+# ============================================================================
+
+
+class Display:
+    """
+    Holds Solu's real state and runs the Screen in its own process. Python
+    lets only one thread per process run at a time, so with the screen in
+    the same process the wake word thread kept falling behind and missed
+    audio. A separate process has its own Python, so drawing can't slow the
+    voice code at all.
+
+    main.py interacts via:
+      set_state(state), show_reminder(reminder), dismiss_reminder(),
+      claim_wake(), try_start_alarm(reminder)
+    Those are safe to call from any thread. run() blocks on the main thread,
+    handling taps and feeding the screen the voice loudness.
+
+    Optional hooks main.py can set:
+      active_speech_process  the playing speech; a tap stops it, and its
+                             level_meter (from tts.py) drives the voice rings
+      input_level_fn         returns mic loudness 0..1, so the orb reacts
+                             to you while it listens
+    """
+
+    def __init__(self, start_screen=True, headless=False):
+        self.state_lock = threading.RLock()
+        self.current_state = "sleep"
+        self.reminder_panel_visible = False
+        self.reminder_data = None
+        self.active_speech_process = None
+        self.input_level_fn = None
+        self.running = True
+        self._process = None
+        if start_screen:
+            ctx = multiprocessing.get_context("spawn")  # a fresh process, nothing inherited from this one
+            self._commands = ctx.Queue()
+            self._events = ctx.Queue()
+            self._level = ctx.RawValue("d", 0.0)
+            self._process = ctx.Process(target=_screen_process, args=(self._commands, self._events, self._level, headless),
+                                        name="solu-screen", daemon=True)
+            # a new process normally re-runs main.py first, which would load the wake
+            # model, Gemini and the rest a second time for nothing. Hiding main.py's
+            # path just while starting makes it import only this file.
+            main_module = sys.modules["__main__"]
+            main_path = main_module.__dict__.pop("__file__", None)
+            try:
+                self._process.start()
+            finally:
+                if main_path is not None:
+                    main_module.__file__ = main_path
+
+    def _send(self, *message):
+        if self._process is not None:
+            self._commands.put(message)
+
+    # ------------------------------------------------------------------
+    # PUBLIC API
+    # ------------------------------------------------------------------
+
+    def set_state(self, state):
+        """Switch the orb to a new emotional state, crossfading from the current one."""
+        if state not in STATES:
+            print(f"Warning: unknown state '{state}', ignoring")
+            return
+        with self.state_lock:
+            if state == self.current_state:
+                return
+            self.current_state = state
+            self._send("state", state)
+
+    def show_reminder(self, reminder):
+        """reminder: dict with at least 'time' (e.g. '14:30') and 'message' keys."""
+        with self.state_lock:
+            self.reminder_data = reminder
+            self.reminder_panel_visible = True
+            self._send("reminder", dict(reminder))
+
+    def dismiss_reminder(self):
+        """Hides the reminder panel and returns the orb to sleep."""
+        with self.state_lock:
+            self.reminder_panel_visible = False
+            self.reminder_data = None
+            self._send("hide_reminder")
+            self.set_state("sleep")
+
+    def claim_wake(self):
+        """Called when the wake word is heard. Atomically decides what it
+        means: "alarm" if an alarm is ringing, otherwise "conversation".
+        Either way the orb goes to idle (listening)."""
+        with self.state_lock:
+            meaning = "alarm" if self.current_state == "alarm" else "conversation"
+            self.set_state("idle")
+            return meaning
+
+    def try_start_alarm(self, reminder):
+        """Shows the reminder and starts the alarm, but only if Solu is
+        asleep. Checked and done under one lock so a conversation can't
+        start in between. Returns True if the alarm started."""
+        with self.state_lock:
+            if self.current_state != "sleep":
+                return False
+            self.show_reminder(reminder)
+            self.set_state("alarm")
+            return True
+
+    def stop(self):
+        self.running = False
+
+    # ------------------------------------------------------------------
+
+    def _on_tap(self, x=None, y=None):
+        """A tap on the screen: stops speech, or dismisses a showing reminder."""
+        with self.state_lock:
+            if self.current_state == "speak":
+                process = self.active_speech_process
+                if process is not None and process.poll() is None:
+                    process.terminate()
+                self.set_state("sleep")
+            elif self.reminder_panel_visible:
+                self.dismiss_reminder()
+            # the screen already reacted on its own, so resend the real state in case they disagree
+            self._send("state", self.current_state)
+            if not self.reminder_panel_visible:
+                self._send("hide_reminder")
+
+    def run(self):
+        """Blocks: passes taps to Solu and voice loudness to the screen, about 60 times a second.
+        Raises if the screen process dies, so the program exits and systemd restarts Solu."""
+        if self._process is None:
+            raise RuntimeError("Display was created without a screen")
+        while self.running:
+            try:
+                event = self._events.get(timeout=1 / 60)
+            except queue.Empty:
+                event = None
+            if event == ("tap",):
+                self._on_tap()
+            elif event == ("quit",):
+                break
+            self._level.value = voice_level_target(self.current_state, self.active_speech_process, self.input_level_fn)
+            if not self._process.is_alive():
+                raise RuntimeError(f"screen process exited (code {self._process.exitcode})")
+        self._process.join(timeout=2)
+
+
+def _screen_process(commands, events, level, headless):
+    """Runs in the screen's own process: draws whatever Display tells it to."""
+    screen = Screen(headless=headless)
+    screen.external_level = lambda: level.value
+    screen.on_tap = lambda: events.put(("tap",))
+    parent = multiprocessing.parent_process()
+    last_parent_check = [time.time()]
+
+    def poll():
+        while True:
+            try:
+                message = commands.get_nowait()
+            except queue.Empty:
+                break
+            kind = message[0]
+            if kind == "state":
+                screen.set_state(message[1])
+            elif kind == "reminder":
+                screen.show_reminder(message[1])
+            elif kind == "hide_reminder":
+                screen.reminder_panel_visible = False
+        if time.time() - last_parent_check[0] > 1.0:  # if Solu's main process is gone, close too
+            last_parent_check[0] = time.time()
+            if parent is not None and not parent.is_alive():
+                screen.running = False
+
+    if headless:  # tests: no window, render offscreen as fast as it can
+        last = time.perf_counter()
+        while screen.running:
+            poll()
+            if pygame.event.get(pygame.QUIT):  # SDL turns a stop signal (SIGTERM) into this
+                break
+            t = time.perf_counter()
+            screen._render_frame(time.time(), min(t - last, 0.1))
+            last = t
+        return
+    screen.run(poll)
+    events.put(("quit",))
+
 # ============================================================================
 # DEMO: cycles through the states with a fake voice, no rest of Solu needed
 # ============================================================================
@@ -552,7 +755,7 @@ def _demo_state(display, start, now):
 
 
 def run_demo():
-    display = Display()
+    display = Screen()
     display.cached_weather_str = "54°F  Clear Sky"
     display._weather_loop = lambda: None
     display.get_sleep_brightness_multiplier_is_night = lambda: False
@@ -579,7 +782,7 @@ def run_preview(out_dir, frames, fps=30):
     """Renders frames to PNG files offscreen (for checking the look without a screen)."""
     from PIL import Image
     os.makedirs(out_dir, exist_ok=True)
-    display = Display(headless=True)
+    display = Screen(headless=True)
     display.cached_weather_str = "54°F  Clear Sky"
     display.get_sleep_brightness_multiplier_is_night = lambda: False
     random.seed(4)
@@ -600,5 +803,4 @@ if __name__ == "__main__":
     elif "--demo" in sys.argv:
         run_demo()
     else:
-        display = Display()
-        display.run()
+        Screen().run()

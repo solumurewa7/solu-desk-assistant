@@ -54,6 +54,7 @@ def wake_loop(mic, model, stop, label, results):
 
 
 def main():
+    # (the screen process must not re-run this file, see the __main__ guard at the bottom)
     print("opening mic and wake model...")
     mic = Mic()
     model = Model(wakeword_model_paths=[WAKE_MODEL_PATH])
@@ -67,13 +68,10 @@ def main():
     stop.set()
     t.join()
 
-    print("\nstarting the GPU screen...")
-    t0 = time.time()
-    import pygame
+    print("\nstarting the GPU screen in its own process (how Solu runs it now)...")
     from display import Display
     display = Display()
-    display.cached_weather_str = "54°F  Clear Sky"
-    print(f"screen took {time.time() - t0:.1f}s to start")
+    time.sleep(3)  # let the screen open
 
     model = Model(wakeword_model_paths=[WAKE_MODEL_PATH])
     mic.resampler.reset()
@@ -82,20 +80,16 @@ def main():
     t = threading.Thread(target=wake_loop, args=(mic, model, stop, "screen", results))
     t.start()
     end = time.time() + PHASE_SECONDS
-    last = time.perf_counter()
-    frames = 0
-    while time.time() < end:
-        pygame.event.pump()
-        now_p = time.perf_counter()
-        display._render_frame(time.time(), min(now_p - last, 0.1))
-        last = now_p
-        pygame.display.flip()
-        frames += 1
+    states = ["idle", "think", "speak", "sleep"]
+    while time.time() < end:  # keep the screen busy changing states like real use
+        display.set_state(states[int(time.time() / 2) % len(states)])
+        time.sleep(0.1)
     stop.set()
     t.join()
-    pygame.quit()
+    alive = display._process.is_alive()
+    display._process.terminate()
 
-    print(f"\nscreen ran at {frames / PHASE_SECONDS:.1f} fps")
+    print(f"\nscreen process was {'running' if alive else 'NOT running'} during phase 2")
     print(f"best score alone: {results.get('alone', 0):.2f}   best score with screen: {results.get('screen', 0):.2f}")
 
 
