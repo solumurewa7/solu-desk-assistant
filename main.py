@@ -1,25 +1,41 @@
 import os
-os.environ["SDL_AUDIODRIVER"] = "dummy"
-import openwakeword
-from openwakeword.model import Model
-import pyaudio
-import numpy as np
-from scipy.signal import resample
-from display import Display
+os.environ["SDL_AUDIODRIVER"] = "dummy"  # pygame must not grab the speaker, mpg123 uses it
+
+import random
 import sys
 import threading
 import time
+import traceback
+
+import numpy as np
+import RPi.GPIO as GPIO
 import speech_recognition as sr
-import random
-from tts import speak, play_sound, start_alarm_sound, stop_alarm_sound, start_speaking, stop_speaking
+from openwakeword.model import Model
+
 import gemini
 import reminders
-import RPi.GPIO as GPIO
+import tts
+from display import Display
+from mic import Mic
 
 sys.stdout.reconfigure(line_buffering=True)  # print() shows up live in journalctl instead of sitting in a buffer
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(17, GPIO.IN)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WAKE_MODEL_PATH = os.path.join(BASE_DIR, "assets", "wakeword", "hey_soh_loo.onnx")
+WAKE_WORD = "hey_soh_loo"
+STARTUP_SOUND = os.path.join(BASE_DIR, "sounds", "startup.mp3")
+ALARM_SOUND = os.path.join(BASE_DIR, "sounds", "alarm.mp3")
+
+WAKE_THRESHOLD = 0.4          # model confidence (0 to 1) needed to trigger: lower is easier to wake, higher means fewer false triggers
+NEAR_MISS_SCORE = 0.15        # scores above this but under the threshold get logged, for tuning
+MIN_ENERGY_THRESHOLD = 800    # floor for speech detection, calibration sometimes comes out too low
+COMMAND_TIMEOUT = 5           # seconds to start talking after the wake word
+PHRASE_TIME_LIMIT = 15        # max seconds for one command, so constant noise can't keep it listening forever
+SPEECH_SERVICE_TIMEOUT = 10   # seconds to wait on Google speech recognition
+MIC_CHECK_INTERVAL = 600      # seconds between [mic check] log lines
+
+PIR_PIN = 17
+REMINDER_POLL_SECONDS = 10
 
 ERROR_RESPONSES = [
     "Sorry, I didn't catch that.",
@@ -27,220 +43,236 @@ ERROR_RESPONSES = [
     "Could you try that again?",
     "I didn't quite get that one.",
 ]
-
-model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
-
-WAKE_THRESHOLD = 0.4  # model confidence (0 to 1) needed to trigger: lower is easier to wake, higher means fewer false triggers
+OFFLINE_RESPONSE = "I can't reach the internet right now."
+BRAIN_RESPONSE = "My brain isn't responding right now. Try again in a bit."
+ALL_PHRASES = ERROR_RESPONSES + [OFFLINE_RESPONSE, BRAIN_RESPONSE]
 
 # ------------------------------------------------------------------
+# voice thread
+# ------------------------------------------------------------------
 
-def listen_for_wake_word(display):
-    """Listens for the wake word forever. On detection, either handles
-    an active alarm (listens for a stop phrase) or starts a normal
-    conversation (listens for a command, asks Gemini, speaks the reply,
-    loops on follow-ups)."""
-    global model
-
-    # calibrate ambient noise once at startup, with a visual cue (think
-    # state) so the user knows not to talk yet
-    display.set_state("think")
+def voice_loop(display):
+    """Calibrates the mic, then listens for the wake word forever."""
+    mic = Mic()
     recognizer = sr.Recognizer()
-    with sr.Microphone(device_index=1) as source:
-        print("Calibrating for ambient noise...")
+    recognizer.operation_timeout = SPEECH_SERVICE_TIMEOUT
+
+    # calibrate once at startup, orange (think) so the user knows not to talk yet
+    display.set_state("think")
+    print("Calibrating for ambient noise...")
+    with mic.command_source() as source:
         recognizer.adjust_for_ambient_noise(source, duration=3)
-        MIN_ENERGY_THRESHOLD = 800
-        if recognizer.energy_threshold < MIN_ENERGY_THRESHOLD:
-            print(f"Calibrated threshold {recognizer.energy_threshold:.1f} too low, raising to floor of {MIN_ENERGY_THRESHOLD}")
-            recognizer.energy_threshold = MIN_ENERGY_THRESHOLD
-        print("Energy threshold set to:", recognizer.energy_threshold)
+    if recognizer.energy_threshold < MIN_ENERGY_THRESHOLD:
+        print(f"Calibrated threshold {recognizer.energy_threshold:.1f} too low, raising to floor of {MIN_ENERGY_THRESHOLD}")
+        recognizer.energy_threshold = MIN_ENERGY_THRESHOLD
+    print(f"Energy threshold set to: {recognizer.energy_threshold:.1f}")
     display.set_state("sleep")
 
-    p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+    model = Model(wakeword_model_paths=[WAKE_MODEL_PATH])
+    mic.resampler.reset()
 
-    # TEMP DIAGNOSTIC: once a minute, log dropped-audio events, the loudest mic
-    # level, and the highest wake word score, to tell a mic/CPU problem apart
-    # from a threshold problem. Safe to remove once the wake word is stable.
-    overflow_count = 0
-    peak_level = 0.0
-    max_score = 0.0
-    last_heartbeat = time.time()
+    peak_level = max_score = slowest_chunk = 0.0
+    last_mic_check = time.time()
 
     while True:
-        try:
-            audio_array = stream.read(3528)
-        except OSError:
-            overflow_count += 1
-            # mic stream occasionally overflows on this hardware -- known,
-            # harmless (only affects wake-word listening, never the actual
-            # command capture), just reopen and keep going
-            try:
-                stream.stop_stream()
-                stream.close()
-            except OSError:
-                pass
-            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
+        raw, chunk_16k = mic.read_wake_chunk()
+        started = time.perf_counter()
+        score = model.predict(chunk_16k)[WAKE_WORD]
+        slowest_chunk = max(slowest_chunk, time.perf_counter() - started)
+
+        peak_level = max(peak_level, float(np.sqrt(np.mean(raw.astype(np.float32) ** 2))))
+        max_score = max(max_score, score)
+        if NEAR_MISS_SCORE < score <= WAKE_THRESHOLD:
+            print(f"wake word near miss: score {score:.2f} (threshold {WAKE_THRESHOLD})")
+        if time.time() - last_mic_check >= MIC_CHECK_INTERVAL:
+            print(f"[mic check] loudest level: {peak_level:.0f}, highest wake score: {max_score:.2f}, "
+                  f"slowest model step: {slowest_chunk * 1000:.0f}ms (budget 80ms)")
+            peak_level = max_score = slowest_chunk = 0.0
+            last_mic_check = time.time()
+
+        if score <= WAKE_THRESHOLD:
             continue
 
-        audio_array_int16 = np.frombuffer(audio_array, dtype=np.int16)
-        resampled = resample(audio_array_int16, 1280).astype(np.int16)
-        score = model.predict(resampled)
-        wake_score = score["hey_soh_loo"]
+        print(f"wake word heard (score {score:.2f})")
+        if display.claim_wake() == "alarm":
+            handle_alarm_wake(display, mic, recognizer)
+        else:
+            mic.pause()  # so the chime isn't heard as the command
+            run_conversation(display, mic, recognizer)
 
-        # TEMP DIAGNOSTIC (see above)
-        peak_level = max(peak_level, float(np.sqrt(np.mean(audio_array_int16.astype(np.float32) ** 2))))
-        max_score = max(max_score, wake_score)
-        if 0.15 < wake_score <= WAKE_THRESHOLD:
-            print(f"wake word near miss: score {wake_score:.2f} (threshold {WAKE_THRESHOLD})")
-        if time.time() - last_heartbeat >= 60:
-            print(f"[mic check] dropped-audio events: {overflow_count}, loudest level: {peak_level:.0f}, highest wake score: {max_score:.2f}")
-            overflow_count = 0
-            peak_level = 0.0
-            max_score = 0.0
-            last_heartbeat = time.time()
+        # a fresh model clears its rolling buffer, otherwise the speech that
+        # just happened can trigger a false wake right after this
+        model = Model(wakeword_model_paths=[WAKE_MODEL_PATH])
+        mic.resampler.reset()
+        mic.start()
 
-        if wake_score > WAKE_THRESHOLD:
 
-            # an alarm is currently going off -- skip the normal
-            # conversation flow, just listen for a stop phrase
+def handle_alarm_wake(display, mic, recognizer):
+    """Wake word during an alarm: the alarm mutes (see ring_alarm) while we
+    listen for "stop". The mic keeps running so "hey solu stop" in one breath works."""
+    text, problem = listen_for_command(display, mic, recognizer)
+    print(f"heard during alarm: {text!r}")
+    if text and ("stop" in text.lower() or "alarm" in text.lower()):
+        display.dismiss_reminder()
+    elif display.reminder_panel_visible:
+        display.set_state("alarm")  # back to ringing
+    else:
+        display.set_state("sleep")  # a tap dismissed it while we were listening
+
+
+def run_conversation(display, mic, recognizer):
+    """Startup chime, then command -> Gemini -> spoken reply, looping while Gemini expects a follow-up."""
+    tts.play_sound(STARTUP_SOUND)
+    history = []
+    while True:
+        text, problem = listen_for_command(display, mic, recognizer)
+        print(f"heard: {text!r}")
+        if text is None:
+            apologize(display, problem)
+            return
+
+        try:
+            reply, follow_up = gemini.ask_gemini(text, history)
+        except gemini.OfflineError:
+            apologize(display, "offline")
+            return
+        except gemini.GeminiError:
+            apologize(display, "brain")
+            return
+
+        history.append({"role": "user", "parts": [{"text": text}]})
+        history.append({"role": "model", "parts": [{"text": reply}]})
+
+        if not speak_reply(display, reply):
+            return  # tapped to stop, or speech failed
+        if not follow_up:
+            display.set_state("sleep")
+            return
+        display.set_state("idle")
+
+
+def listen_for_command(display, mic, recognizer):
+    """Listens for one command. Returns (text, None) or (None, problem) where
+    problem is "no_speech", "unclear", or "offline"."""
+    recognizer.energy_threshold = max(recognizer.energy_threshold, MIN_ENERGY_THRESHOLD)  # dynamic adjustment can drift under the floor
+    try:
+        with mic.command_source() as source:
+            audio = recognizer.listen(source, timeout=COMMAND_TIMEOUT, phrase_time_limit=PHRASE_TIME_LIMIT)
+    except sr.WaitTimeoutError:
+        print("listen: heard no speech before the timeout")
+        return None, "no_speech"
+    finally:
+        mic.pause()  # nothing to hear while waiting on Google/Gemini or while Solu talks
+
+    display.set_state("think")
+    try:
+        return recognizer.recognize_google(audio), None
+    except sr.UnknownValueError:
+        print("listen: heard audio but could not make out words")
+        return None, "unclear"
+    except sr.RequestError as e:
+        print(f"listen: speech service error: {e}")
+        return None, "offline"
+    except Exception as e:
+        print(f"listen: speech service failed: {e!r}")
+        return None, "offline"
+
+
+def speak_reply(display, text):
+    """Speaks a reply. Returns True if it played to the end, False if the
+    user tapped to cut it off or no speech could be generated."""
+    display.set_state("speak")
+    process = tts.start_speaking(text)
+    if process is None:
+        apologize(display, "offline")
+        return False
+
+    display.active_speech_process = process
+    try:
+        while process.poll() is None and display.current_state == "speak":
+            time.sleep(0.05)
+    finally:
+        tts.stop_speaking(process)
+        display.active_speech_process = None
+    return display.current_state == "speak"  # a tap switches it to sleep
+
+
+def apologize(display, problem):
+    if problem == "offline":
+        phrase = OFFLINE_RESPONSE
+    elif problem == "brain":
+        phrase = BRAIN_RESPONSE
+    else:
+        phrase = random.choice(ERROR_RESPONSES)
+    display.set_state("error")
+    tts.speak(phrase)
+    display.set_state("sleep")
+
+# ------------------------------------------------------------------
+# reminder thread
+# ------------------------------------------------------------------
+
+def reminder_loop(display):
+    """Checks for due reminders and rings them one at a time."""
+    last_cleanup = 0.0
+    while True:
+        if time.time() - last_cleanup > 3600:
+            reminders.clear_old_reminders()
+            last_cleanup = time.time()
+
+        due = reminders.check_due_reminders()
+        if due:
+            ring_alarm(display, due[0])
+            continue  # check right away in case another one is due too
+        time.sleep(REMINDER_POLL_SECONDS)
+
+
+def ring_alarm(display, reminder):
+    """Waits until Solu is at rest AND someone is nearby, so it never alarms
+    into an empty room or over a conversation. Then rings until dismissed by
+    a tap or "hey solu stop"."""
+    while not (GPIO.input(PIR_PIN) and display.try_start_alarm(reminder)):
+        time.sleep(0.5)
+    print(f"alarm: {reminder['message']!r}")
+
+    alarm = None
+    try:
+        while display.reminder_panel_visible:
             if display.current_state == "alarm":
-                display.set_state("idle")
-                stream.stop_stream()
-                stream.close()
-
-                command_text = listen_for_command(display, recognizer)
-
-                if command_text is not None and ("stop" in command_text.lower() or "alarm" in command_text.lower()):
-                    display.dismiss_reminder()
-                else:
-                    display.set_state("alarm")
-
-                # recreate the model to clear its internal rolling buffer,
-                # otherwise leftover recent speech can cause a false
-                # wake-word retrigger right after this
-                model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
-                stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
-                continue
-
-            display.set_state("idle")
-            play_sound("sounds/startup.mp3")
-            stream.stop_stream()
-            stream.close()
-
-            history = []
-
-            while True:
-                command_text = listen_for_command(display, recognizer)
-                print("Command was:", command_text)
-
-                if command_text == None:
-                    display.set_state("error")
-                    speak(random.choice(ERROR_RESPONSES))
-                    display.set_state("sleep")
-                    break
-
-                response, follow_up = gemini.ask_gemini(command_text, history)
-                if response == None:
-                    display.set_state("error")
-                    speak(random.choice(ERROR_RESPONSES))
-                    display.set_state("sleep")
-                    break
-
-                history.append({"role": "user", "parts": [{"text": command_text}]})
-                history.append({"role": "model", "parts": [{"text": response}]})
-
-                display.set_state("speak")
-                process, temp_filename = start_speaking(response)
-                display.active_speech_process = process
-
-                # wait for speech to finish naturally OR be interrupted by
-                # a tap (display._on_tap terminates the process and sets
-                # state to sleep directly, which is what ends this loop early)
-                was_interrupted = False
-                while process.poll() is None and display.current_state == "speak":
-                    time.sleep(0.1)
-                if display.current_state == "sleep":
-                    was_interrupted = True
-
-                stop_speaking(process, temp_filename)
-                display.active_speech_process = None
-
-                # a tap to stop speech always ends the conversation, even
-                # if this response would otherwise have asked a follow-up
-                if was_interrupted:
-                    break
-
-                if follow_up:
-                    display.set_state("idle")
-                    continue
-                else:
-                    display.set_state("sleep")
-                    break
-
-            model = Model(wakeword_model_paths=["assets/wakeword/hey_soh_loo.onnx"])
-            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=1, frames_per_buffer=3528)
-            continue
-
+                if alarm is None or alarm.poll() is not None:
+                    alarm = tts.start_alarm_sound(ALARM_SOUND)  # loops the clip
+            elif alarm is not None:
+                tts.stop_alarm_sound(alarm)  # muted while listening for "stop"
+                alarm = None
+            time.sleep(0.1)
+    finally:
+        tts.stop_alarm_sound(alarm)
+    reminders.mark_completed(reminder["id"])
 
 # ------------------------------------------------------------------
 
-def listen_for_command(display, recognizer):
-    """Listens for one spoken command, returns the transcribed text or None on timeout/failure."""
-    with sr.Microphone(device_index=1) as source:
+def start_guarded_thread(target, *args):
+    """Runs target in a background thread. If it ever crashes, the whole
+    program exits so systemd restarts Solu, instead of the screen staying
+    up while Solu is secretly deaf."""
+    def guard():
         try:
-            audio = recognizer.listen(source, timeout=5)
-            display.set_state("think")
-            text = recognizer.recognize_google(audio)
-            return text
-        except sr.WaitTimeoutError:
-            print("listen: heard no speech before the timeout")
-            return None
-        except sr.UnknownValueError:
-            print("listen: heard audio but could not make out words")
-            return None
-        except sr.RequestError as e:
-            print(f"listen: speech service error: {e}")
-            return None
-        except Exception as e:
-            print(f"listen: unexpected error: {e!r}")
-            return None
-
-# ------------------------------------------------------------------
-
-def check_reminders_loop(display):
-    """Checks for due reminders every 10 seconds. Only fires one once the
-    orb is at rest AND motion is detected nearby, so it never alarms into
-    an empty room. Plays the alarm sound on a loop until dismissed
-    (screen tap or the wake-word stop-phrase path above)."""
-    reminders.clear_old_reminders()
-    while True:
-        if display.current_state == "sleep":
-            due = reminders.check_due_reminders()
-            for reminder in due:
-                while display.current_state != "sleep":
-                    time.sleep(1)
-                while GPIO.input(17) == 0:
-                    time.sleep(1)
-
-                display.show_reminder(reminder)
-                display.set_state("alarm")
-
-                alarm_process = start_alarm_sound("sounds/alarm.mp3")
-                while display.reminder_data is not None:
-                    if alarm_process.poll() is not None:
-                        alarm_process = start_alarm_sound("sounds/alarm.mp3")
-                    time.sleep(0.8)
-
-                stop_alarm_sound(alarm_process)
-                reminders.mark_completed(reminder["id"])
-        time.sleep(10)
+            target(*args)
+        except BaseException:
+            traceback.print_exc()
+        print(f"FATAL: {target.__name__} stopped, exiting so systemd restarts Solu", flush=True)
+        os._exit(1)
+    threading.Thread(target=guard, name=target.__name__, daemon=True).start()
 
 
-# ------------------------------------------------------------------
 if __name__ == "__main__":
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(PIR_PIN, GPIO.IN)
     display = Display()
-    t = threading.Thread(target=listen_for_wake_word, args=(display,), daemon=True)
-    t.start()
-    t2 = threading.Thread(target=check_reminders_loop, args=(display,), daemon=True)
-    t2.start()
-    display.run()
+    start_guarded_thread(voice_loop, display)
+    start_guarded_thread(reminder_loop, display)
+    threading.Thread(target=tts.prepare_phrases, args=(ALL_PHRASES,), daemon=True).start()
+    try:
+        display.run()
+    finally:
+        GPIO.cleanup()

@@ -1,6 +1,9 @@
 import math
 import random
+from collections import deque
 
+import pygame
+import pygame.gfxdraw
 
 NUM_PARTICLES = 8
 
@@ -27,18 +30,16 @@ MAX_ORBIT_RADIUS_RATIO = 1.55
 class OrbitParticle:
     """One particle with its own random orbital plane, orbiting outside the orb."""
 
-    __slots__ = (
-        "phase_offset", "tilt", "orbit_radius_ratio", "squash",
-        "speed_scale", "trail",
-    )
+    __slots__ = ("phase_offset", "cos_tilt", "sin_tilt", "orbit_radius_ratio", "squash", "speed_scale", "trail")
 
     def __init__(self, index, total_count):
         self.phase_offset = (index / total_count) * 2 * math.pi  # evenly spaced starting positions
-        self.tilt = random.uniform(0, math.pi)
+        tilt = random.uniform(0, math.pi)
+        self.cos_tilt, self.sin_tilt = math.cos(tilt), math.sin(tilt)
         self.orbit_radius_ratio = random.uniform(MIN_ORBIT_RADIUS_RATIO, MAX_ORBIT_RADIUS_RATIO)
         self.squash = random.uniform(0.35, 0.85)  # how flattened the orbit looks from this viewing angle
         self.speed_scale = random.uniform(0.75, 1.35)
-        self.trail = []
+        self.trail = deque(maxlen=TRAIL_LENGTH)
 
     def get_state(self, t, base_speed, orb_radius_px):
         """Returns (x, y, depth_scale, is_behind) as pixel offsets from the orb's center."""
@@ -48,14 +49,12 @@ class OrbitParticle:
         local_x = math.cos(angle) * orbit_radius_px
         local_y = math.sin(angle) * orbit_radius_px * self.squash
 
-        x = local_x * math.cos(self.tilt) - local_y * math.sin(self.tilt)
-        y = local_x * math.sin(self.tilt) + local_y * math.cos(self.tilt)
+        x = local_x * self.cos_tilt - local_y * self.sin_tilt
+        y = local_x * self.sin_tilt + local_y * self.cos_tilt
 
         depth_factor = math.sin(angle)
-        is_behind = depth_factor < 0
         depth_scale = 0.7 + 0.3 * ((depth_factor + 1) / 2)
-
-        return x, y, depth_scale, is_behind
+        return x, y, depth_scale, depth_factor < 0
 
 
 class OrbitSystem:
@@ -67,52 +66,33 @@ class OrbitSystem:
         self.elapsed = 0.0
 
     def update(self, dt, state):
-        speed_mult = STATE_SPEED_MULTIPLIER.get(state, 0.6)
-        self.elapsed += dt * speed_mult
+        self.elapsed += dt * STATE_SPEED_MULTIPLIER.get(state, 0.6)
 
     def get_split_particles(self, center_x, center_y, orb_radius_px):
-        """Returns (behind_list, in_front_list) of (x, y, depth_scale, trail) tuples in screen coordinates."""
+        """Returns (behind_list, in_front_list), each entry is a particle's trail, newest point first."""
         behind_list = []
         in_front_list = []
-
         for p in self.particles:
-            x_offset, y_offset, depth_scale, is_behind = p.get_state(
-                self.elapsed, BASE_ORBIT_SPEED, orb_radius_px
-            )
-
-            x = center_x + x_offset
-            y = center_y + y_offset
-
-            p.trail.insert(0, (x, y, depth_scale))
-            if len(p.trail) > TRAIL_LENGTH:
-                p.trail.pop()
-
-            entry = (x, y, depth_scale, list(p.trail))
-            if is_behind:
-                behind_list.append(entry)
-            else:
-                in_front_list.append(entry)
-
+            x_offset, y_offset, depth_scale, is_behind = p.get_state(self.elapsed, BASE_ORBIT_SPEED, orb_radius_px)
+            p.trail.appendleft((center_x + x_offset, center_y + y_offset, depth_scale))
+            (behind_list if is_behind else in_front_list).append(p.trail)
         return behind_list, in_front_list
 
 
-def draw_particle_list(surface, particle_entries, color_rgb):
-    """Draws particle entries with fading trail streaks, tinted to color_rgb."""
-    import pygame
-
+def draw_particle_list(surface, trails, color_rgb):
+    """Draws each particle with a fading trail, tinted to color_rgb. Draws
+    straight onto the screen with alpha blending and smooth edges, no
+    temporary surfaces."""
     r, g, b = color_rgb
-
-    for x, y, depth_scale, trail in particle_entries:
-        trail_count = len(trail)
-        for i in range(trail_count - 1, -1, -1):
-            tx, ty, tscale = trail[i]
-            fade = max(0.0, 1.0 - (i * TRAIL_FADE_STEP))
+    for trail in trails:
+        for i in range(len(trail) - 1, -1, -1):
+            fade = 1.0 - i * TRAIL_FADE_STEP
             if fade <= 0.02:
                 continue
-
+            tx, ty, tscale = trail[i]
             radius = max(1, int(PARTICLE_RADIUS * tscale * fade))
-            trail_color = (int(r * fade), int(g * fade), int(b * fade))
-
-            dot_surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(dot_surf, (*trail_color, int(255 * fade)), (radius, radius), radius)
-            surface.blit(dot_surf, (int(tx - radius), int(ty - radius)))
+            color = (int(r * fade), int(g * fade), int(b * fade), int(255 * fade))
+            x, y = int(tx), int(ty)
+            pygame.gfxdraw.filled_circle(surface, x, y, radius, color)
+            if radius >= 2:
+                pygame.gfxdraw.aacircle(surface, x, y, radius, color)

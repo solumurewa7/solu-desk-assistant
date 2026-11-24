@@ -15,7 +15,7 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 - **Local wake word detection** — say "Hey Solu" to activate, using a custom-trained openWakeWord model running entirely on-device
 - **Voice recognition** — Google Speech Recognition for command transcription, with automatic ambient noise calibration on startup
 - **Multi-turn conversation** — Solu remembers context within a conversation and knows when to ask a follow-up question versus when to end the interaction
-- **Text-to-speech responses** — natural voice output via gTTS
+- **Text-to-speech responses** — natural neural voice (Microsoft Edge TTS, en-GB Ryan) streamed straight to the speaker so replies start almost instantly, with gTTS as a fallback and cached offline phrases for when the internet is down
 - **Real-time weather and live web search** — Gemini answers using OpenWeatherMap data and autonomous Google Search grounding when a question needs current information
 - **Smart reminders** — set reminders by voice using natural, relative phrasing ("remind me in an hour," "tomorrow at 3pm"), with optional Google Calendar sync
 - **Motion-gated alarms** — reminders only alarm once someone is actually detected nearby (PIR sensor), and can be dismissed by tapping the screen or saying "hey Solu, stop the alarm"
@@ -42,7 +42,7 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 
 **Languages:** Python
 
-**Libraries:** SpeechRecognition, openWakeWord, gTTS, Pygame, PyAudio, NumPy, SciPy, requests, RPi.GPIO
+**Libraries:** SpeechRecognition, openWakeWord, edge-tts, gTTS, Pygame, PyAudio, NumPy, SciPy, requests, RPi.GPIO
 
 **APIs:** OpenWeatherMap, Gemini API (with Google Search grounding and function-style structured tags), Google Calendar API (OAuth2)
 
@@ -54,13 +54,13 @@ A voice-activated physical desk assistant built from scratch using a Raspberry P
 
 ## How It Works
 
-Solu runs as a continuous Python process on the Raspberry Pi, with three background threads: the wake word listener, the reminder checker, and the Pygame display loop.
+Solu runs as a systemd service on the Raspberry Pi, with three threads: the wake word listener, the reminder checker, and the Pygame display loop. If a background thread ever crashes, the whole process exits and systemd restarts it, so Solu can never end up silently deaf.
 
-A custom-trained openWakeWord model continuously listens for "Hey Solu" entirely on-device, with no audio sent anywhere until the wake word is detected. Once triggered, the following command is transcribed using Google Speech Recognition and sent to the Gemini API along with the running conversation history. Gemini's response includes two hidden control tags: one telling the program whether to keep listening for a follow-up or end the conversation, and one (only when relevant) containing a fully-parsed reminder to create, including relative-time math ("in an hour," "tomorrow") already converted to a real date and time. Responses are spoken aloud using gTTS.
+A custom-trained openWakeWord model continuously listens for "Hey Solu" entirely on-device, with no audio sent anywhere until the wake word is detected. One microphone stream stays open the whole time and is shared between wake word detection and command capture, and the 44.1kHz mic audio is resampled to 16kHz as one continuous stream so the model never hears glitches at chunk boundaries. Once triggered, the following command is transcribed using Google Speech Recognition and sent to the Gemini API along with the running conversation history. Gemini's response includes two hidden control tags: one telling the program whether to keep listening for a follow-up or end the conversation, and one (only when relevant) containing a fully-parsed reminder to create, including relative-time math ("in an hour," "tomorrow") already converted to a real date and time. Responses are streamed from Edge TTS straight into the audio player, so Solu starts talking as soon as the first audio arrives.
 
-Reminders are stored locally in a JSON file and checked every 10 seconds. A due reminder only triggers once the orb is at rest and the PIR sensor detects someone nearby, so Solu never alarms into an empty room. The alarm sound loops until dismissed by tapping the screen or saying "hey Solu, stop the alarm," both of which stop it within a fraction of a second. Reminders flagged for the calendar are synced automatically via the Google Calendar API.
+Reminders are stored locally in a JSON file and checked every 10 seconds. A due reminder only triggers once the orb is at rest and the PIR sensor detects someone nearby, so Solu never alarms into an empty room or over a conversation. The alarm sound loops until dismissed by tapping the screen or saying "hey Solu, stop the alarm," and it mutes while Solu listens for the stop command. Reminders flagged for the calendar are synced automatically via the Google Calendar API.
 
-The display is fully custom-rendered in Pygame: a sharp-edged gradient orb with independent orbiting particles (each on its own randomized orbital plane, like planets around a sun), a twinkling starfield background, smooth color crossfades between emotional states, a breathing animation, and touch-reactive feedback. The orb dims to fully invisible between 11pm and 7am, and a tap reveals the time, date, and weather.
+The display is fully custom-rendered in Pygame: a per-pixel rendered gradient orb with a perfectly smooth edge and sub-pixel breathing, with independent orbiting particles (each on its own randomized orbital plane, like planets around a sun), a twinkling starfield with sub-pixel star motion, smooth color crossfades between emotional states, a breathing animation, and touch-reactive feedback. The orb dims to fully invisible between 9pm and 8am, and a tap reveals the time, date, and weather (fetched in the background so the screen never waits on the network).
 
 ---
 
@@ -82,6 +82,7 @@ Core architecture, voice loop, conversation system, reminders, calendar sync, an
 **Possible future work:**
 - Higher-quality local text-to-speech and speech-to-text (tested Piper and Vosk; both underperformed the current cloud-based setup on this hardware, may revisit on different hardware)
 - Persistent conversation memory across separate wake-word sessions (currently scoped to one conversation only)
+- GPU shader-rendered 3D orb with audio-reactive animation
 
 ---
 
