@@ -15,8 +15,10 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 
 import edge_tts
+import numpy as np
 from gtts import gTTS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +26,13 @@ CACHE_DIR = os.path.join(BASE_DIR, "data", "tts_cache")
 
 AUDIO_DEVICE = "hw:0,0"
 PLAYER = ["mpg123", "-q", "-a", AUDIO_DEVICE]
+
+# a second mpg123 decodes speech to raw samples so the screen can follow its loudness
+DECODER = ["mpg123", "-q", "-s", "-m", "-r", "16000", "-e", "s16"]
+LEVEL_RATE = 16000
+LEVEL_WINDOW = 0.02         # one loudness value per 20ms of audio
+LEVEL_RANGE_DB = 30         # loudness range mapped onto 0..1, below the loudest part so far
+SPEECH_SYNC_OFFSET = 0.12   # seconds from handing audio to mpg123 until it's heard. Raise if rings lead the voice, lower if they lag
 
 EDGE_VOICE = "en-GB-RyanNeural"
 EDGE_RATE = "+0%"     # speed adjustment, e.g. "+8%" for slightly faster
@@ -101,20 +110,96 @@ def generate_audio(text, path):
     return "gtts" if _gtts_to_file(text, path) else None
 
 # ------------------------------------------------------------------
+# loudness, for the screen
+# ------------------------------------------------------------------
+
+class LevelMeter:
+    """How loud the speech is at each moment, so the orb can pulse with it.
+    The same mp3 audio goes to a second mpg123 that decodes it (much faster
+    than real time) instead of playing it, and every 20ms of audio becomes
+    one loudness value from 0 to 1. level_at(time.time()) looks up the value
+    for the moment being heard right now."""
+
+    def __init__(self, path=None):
+        """path: an mp3 file to read, or None to have audio fed in with feed()."""
+        self.levels = []
+        self.start_time = None
+        self.peak_db = -22.0   # typical loudest speech, adapts upward to the real voice
+        self.process = subprocess.Popen(
+            DECODER + ([path] if path else ["-"]),
+            stdin=subprocess.DEVNULL if path else subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=self._read_levels, daemon=True).start()
+
+    @classmethod
+    def create(cls, path=None):
+        """A meter, or None if the decoder can't start. The orb just won't pulse then."""
+        try:
+            return cls(path)
+        except OSError as e:
+            print(f"tts: no level meter: {e!r}")
+            return None
+
+    def mark_started(self):
+        self.start_time = time.time() + SPEECH_SYNC_OFFSET
+
+    def feed(self, data):
+        try:
+            self.process.stdin.write(data)
+        except (OSError, ValueError):
+            pass
+
+    def finish(self):
+        try:
+            self.process.stdin.close()
+        except (OSError, ValueError, AttributeError):
+            pass
+
+    def stop(self):
+        self.finish()
+        _terminate(self.process)
+
+    def _read_levels(self):
+        window_bytes = int(LEVEL_RATE * LEVEL_WINDOW) * 2
+        try:
+            while True:
+                data = self.process.stdout.read(window_bytes)
+                if len(data) < 2:
+                    break
+                samples = np.frombuffer(data[:len(data) // 2 * 2], dtype=np.int16).astype(np.float32)
+                db = 20 * np.log10(np.sqrt(np.mean(samples * samples)) / 32768 + 1e-9)
+                self.peak_db = max(self.peak_db, db)
+                self.levels.append(float(np.clip((db - self.peak_db + LEVEL_RANGE_DB) / LEVEL_RANGE_DB, 0.0, 1.0)))
+        except (OSError, ValueError):
+            pass
+
+    def level_at(self, now):
+        if self.start_time is None:
+            return 0.0
+        i = int((now - self.start_time) / LEVEL_WINDOW)
+        levels = self.levels
+        return levels[i] if 0 <= i < len(levels) else 0.0
+
+# ------------------------------------------------------------------
 # replies (non-blocking, interruptible)
 # ------------------------------------------------------------------
 
-def _feed_player(process, chunks):
-    """Pipes the rest of the Edge stream into mpg123, then closes its input so it can finish."""
+def _feed_player(process, chunks, meter):
+    """Pipes the rest of the Edge stream into mpg123 (and the level meter), then closes their inputs so they can finish."""
     try:
         while True:
             data = chunks.get(timeout=EDGE_TIMEOUT)
             if data is _DONE or isinstance(data, Exception):
                 break
+            if meter is not None:
+                meter.feed(data)
             process.stdin.write(data)
     except (queue.Empty, OSError, ValueError):
         pass  # Edge stalled, or the player was stopped by a tap
     finally:
+        if meter is not None:
+            meter.finish()
         try:
             process.stdin.close()
         except (OSError, ValueError):
@@ -124,31 +209,50 @@ def _feed_player(process, chunks):
 def start_speaking(text):
     """Starts speaking without blocking. Returns the player process (poll() it
     to see when speech ends, terminate() it to cut speech off), or None if no
-    speech could be generated."""
+    speech could be generated. The process carries a level_meter the screen
+    reads to pulse with the voice (None if it couldn't start)."""
     started = _start_edge_stream(text)
     if started is not None:
         chunks, first = started
+        meter = LevelMeter.create()
         try:
             process = subprocess.Popen(PLAYER + ["-"], stdin=subprocess.PIPE)
+            if meter is not None:
+                meter.feed(first)
             process.stdin.write(first)
         except OSError as e:
             print(f"tts: could not start player: {e!r}")
+            if meter is not None:
+                meter.stop()
             return None
-        threading.Thread(target=_feed_player, args=(process, chunks), daemon=True).start()
+        process.level_meter = meter
+        if meter is not None:
+            meter.mark_started()
+        threading.Thread(target=_feed_player, args=(process, chunks, meter), daemon=True).start()
         return process
 
     path = os.path.join(BASE_DIR, f"temp_speech_{os.getpid()}.mp3")
     if not _gtts_to_file(text, path):
         return None
+    meter = LevelMeter.create(path)
     process = _popen(PLAYER + [path])
-    if process is not None:
-        threading.Thread(target=_remove_when_done, args=(process, path), daemon=True).start()
+    if process is None:
+        if meter is not None:
+            meter.stop()
+        return None
+    process.level_meter = meter
+    if meter is not None:
+        meter.mark_started()
+    threading.Thread(target=_remove_when_done, args=(process, path), daemon=True).start()
     return process
 
 
 def stop_speaking(process):
-    """Stops a speech process if it's still playing. Safe to call on finished or None processes."""
+    """Stops a speech process (and its level meter) if still running. Safe on finished or None processes."""
     _terminate(process)
+    meter = getattr(process, "level_meter", None)
+    if meter is not None:
+        meter.stop()
 
 
 def _remove_when_done(process, path):

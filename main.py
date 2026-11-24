@@ -67,6 +67,7 @@ def voice_loop(display):
         print(f"Calibrated threshold {recognizer.energy_threshold:.1f} too low, raising to floor of {MIN_ENERGY_THRESHOLD}")
         recognizer.energy_threshold = MIN_ENERGY_THRESHOLD
     print(f"Energy threshold set to: {recognizer.energy_threshold:.1f}")
+    display.input_level_fn = lambda: mic.level(recognizer.energy_threshold)  # the orb reacts to your voice while listening
     display.set_state("sleep")
 
     model = Model(wakeword_model_paths=[WAKE_MODEL_PATH])

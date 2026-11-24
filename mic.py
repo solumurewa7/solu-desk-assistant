@@ -51,6 +51,7 @@ class Mic:
         self.pa = pyaudio.PyAudio()
         self.stream = None
         self.resampler = StreamResampler()
+        self.rms = 0.0   # loudness of the latest audio read, 0 while paused
         self._open()
 
     def _open(self):
@@ -79,6 +80,7 @@ class Mic:
 
     def pause(self):
         """Stops capture (e.g. while Solu talks) without releasing the device."""
+        self.rms = 0.0
         if not self.stream.is_stopped():
             try:
                 self.stream.stop_stream()
@@ -91,7 +93,10 @@ class Mic:
         newest audio instead of throwing the chunk away."""
         for attempt in range(3):
             try:
-                return self.stream.read(frames, exception_on_overflow=False)
+                data = self.stream.read(frames, exception_on_overflow=False)
+                samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                self.rms = float(np.sqrt(np.mean(samples * samples))) if len(samples) else 0.0
+                return data
             except OSError as e:
                 print(f"mic: read failed ({e}), reopening")
                 self._reopen()
@@ -101,6 +106,10 @@ class Mic:
         """Returns (raw 44.1kHz int16 samples, 16kHz int16 samples for the wake model)."""
         raw = np.frombuffer(self.read(WAKE_CHUNK), dtype=np.int16)
         return raw, self.resampler.process(raw)
+
+    def level(self, speech_threshold):
+        """Loudness from 0 (background noise) to 1 (talking), relative to the calibrated speech threshold."""
+        return min(max((self.rms - 0.7 * speech_threshold) / (3.0 * speech_threshold), 0.0), 1.0)
 
     def command_source(self):
         """A speech_recognition source that reads from this same stream."""
