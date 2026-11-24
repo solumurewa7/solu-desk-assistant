@@ -36,6 +36,7 @@ MIC_CHECK_INTERVAL = 600      # seconds between [mic check] log lines
 
 PIR_PIN = 17
 REMINDER_POLL_SECONDS = 10
+ALARM_TIMEOUT_SECONDS = 15 * 60  # an alarm nobody dismisses stops itself after this long
 
 ERROR_RESPONSES = [
     "Sorry, I didn't catch that.",
@@ -230,14 +231,19 @@ def reminder_loop(display):
 def ring_alarm(display, reminder):
     """Waits until Solu is at rest AND someone is nearby, so it never alarms
     into an empty room or over a conversation. Then rings until dismissed by
-    a tap or "hey solu stop"."""
+    a tap, "hey solu stop", or ALARM_TIMEOUT_SECONDS passing."""
     while not (GPIO.input(PIR_PIN) and display.try_start_alarm(reminder)):
         time.sleep(0.5)
     print(f"alarm: {reminder['message']!r}")
 
     alarm = None
+    started = time.time()
     try:
         while display.reminder_panel_visible:
+            if time.time() - started > ALARM_TIMEOUT_SECONDS and display.current_state == "alarm":
+                print("alarm: nobody dismissed it, stopping after timeout")
+                display.dismiss_reminder()
+                break
             if display.current_state == "alarm":
                 if alarm is None or alarm.poll() is not None:
                     alarm = tts.start_alarm_sound(ALARM_SOUND)  # loops the clip
