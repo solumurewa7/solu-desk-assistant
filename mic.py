@@ -6,6 +6,8 @@ so there is no gap or device re-init between hearing "hey solu" and listening
 for the command.
 """
 
+import queue
+import threading
 import time
 
 import numpy as np
@@ -52,6 +54,10 @@ class Mic:
         self.stream = None
         self.resampler = StreamResampler()
         self.rms = 0.0   # loudness of the latest audio read, 0 while paused
+        self._recorder = None
+        self._recording = False
+        self._recorded = queue.Queue()
+        self._pending = b""
         self._open()
 
     def _open(self):
@@ -78,8 +84,50 @@ class Mic:
             except OSError:
                 self._reopen()
 
+    def start_recording(self):
+        """Keeps reading the mic in a background thread into a buffer, so audio
+        isn't lost while the caller is busy (e.g. waiting on Google)."""
+        if self._recording:
+            return
+        self.start()
+        self._recorded = queue.Queue()
+        self._pending = b""
+        self._recording = True
+        self._recorder = threading.Thread(target=self._record, daemon=True)
+        self._recorder.start()
+
+    def _record(self):
+        try:
+            while self._recording:
+                self._recorded.put(self.read(COMMAND_CHUNK))
+        except OSError as e:
+            print(f"mic: background recording stopped: {e}")
+            self._recording = False
+
+    def stop_recording(self):
+        self._recording = False
+        if self._recorder is not None:
+            self._recorder.join(timeout=1)
+            self._recorder = None
+
+    def read_command(self, frames):
+        """Reads command audio: from the background buffer while recording, else straight from the mic."""
+        if not self._recording and self._recorded.empty() and not self._pending:
+            return self.read(frames)
+        needed = frames * 2
+        while len(self._pending) < needed:
+            try:
+                self._pending += self._recorded.get(timeout=2)
+            except queue.Empty:
+                raise OSError("mic: no audio arriving")
+        data, self._pending = self._pending[:needed], self._pending[needed:]
+        return data
+
     def pause(self):
         """Stops capture (e.g. while Solu talks) without releasing the device."""
+        self.stop_recording()
+        self._recorded = queue.Queue()
+        self._pending = b""
         self.rms = 0.0
         if not self.stream.is_stopped():
             try:
@@ -137,4 +185,4 @@ class _CommandSource(sr.AudioSource):
         self.stream = None
 
     def read(self, size):
-        return self.mic.read(size)
+        return self.mic.read_command(size)

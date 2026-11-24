@@ -32,6 +32,17 @@ MIN_ENERGY_THRESHOLD = 800    # floor for speech detection, calibration sometime
 COMMAND_TIMEOUT = 5           # seconds to start talking after the wake word
 PHRASE_TIME_LIMIT = 15        # max seconds for one command, so constant noise can't keep it listening forever
 PAUSE_THRESHOLD = 1.4         # seconds of quiet that count as "done talking" (library default 0.8 cut people off mid-sentence). Lower = snappier replies, higher = more room to pause
+CONTINUE_TIMEOUT = 4          # if what you said sounds unfinished ("...and"), seconds to wait for the rest
+MAX_CONTINUATIONS = 3
+
+# a command ending in one of these words clearly isn't finished yet. Only words
+# that almost never end a real sentence ("turn the lights on" ends in "on", so "on" isn't here)
+UNFINISHED_ENDINGS = {
+    "and", "but", "or", "because", "cause", "plus", "also",
+    "the", "a", "an", "my", "your", "our", "their",
+    "of", "to", "with", "if",
+    "um", "uh", "uhm", "umm", "hmm", "er", "erm",
+}
 SPEECH_SERVICE_TIMEOUT = 10   # seconds to wait on Google speech recognition
 MIC_CHECK_INTERVAL = 600      # seconds between [mic check] log lines
 
@@ -155,20 +166,57 @@ def run_conversation(display, mic, recognizer):
         display.set_state("idle")
 
 
+def sounds_unfinished(text):
+    words = text.lower().replace("'", "").rstrip(" .,!?").split()
+    return bool(words) and words[-1] in UNFINISHED_ENDINGS
+
+
 def listen_for_command(display, mic, recognizer):
     """Listens for one command. Returns (text, None) or (None, problem) where
-    problem is "no_speech", "unclear", or "offline"."""
+    problem is "no_speech", "unclear", or "offline".
+
+    The mic keeps recording in the background while Google transcribes, so
+    nothing said during that moment is lost. If the transcript sounds
+    unfinished ("tell me about the weather and..."), it keeps listening for
+    the rest and joins the pieces."""
     recognizer.energy_threshold = max(recognizer.energy_threshold, MIN_ENERGY_THRESHOLD)  # dynamic adjustment can drift under the floor
+    mic.start_recording()
     try:
         with mic.command_source() as source:
-            audio = recognizer.listen(source, timeout=COMMAND_TIMEOUT, phrase_time_limit=PHRASE_TIME_LIMIT)
-    except sr.WaitTimeoutError:
-        print("listen: heard no speech before the timeout")
-        return None, "no_speech"
-    finally:
-        mic.pause()  # nothing to hear while waiting on Google/Gemini or while Solu talks
+            try:
+                audio = recognizer.listen(source, timeout=COMMAND_TIMEOUT, phrase_time_limit=PHRASE_TIME_LIMIT)
+            except sr.WaitTimeoutError:
+                print("listen: heard no speech before the timeout")
+                return None, "no_speech"
+            display.set_state("think")
+            text, problem = transcribe(recognizer, audio)
+            if text is None:
+                return None, problem
 
-    display.set_state("think")
+            for _ in range(MAX_CONTINUATIONS):
+                if not sounds_unfinished(text):
+                    break
+                print(f"listen: {text!r} sounds unfinished, waiting for the rest")
+                display.set_state("idle")
+                try:
+                    audio = recognizer.listen(source, timeout=CONTINUE_TIMEOUT, phrase_time_limit=PHRASE_TIME_LIMIT)
+                except sr.WaitTimeoutError:
+                    break  # they stopped there, go with what we have
+                display.set_state("think")
+                more, problem = transcribe(recognizer, audio)
+                if more is None:
+                    if problem == "offline":
+                        return None, problem
+                    break
+                text = f"{text} {more}"
+            display.set_state("think")
+            return text, None
+    finally:
+        mic.pause()  # nothing to hear while waiting on Gemini or while Solu talks
+
+
+def transcribe(recognizer, audio):
+    """Google speech-to-text. Returns (text, None) or (None, "unclear" / "offline")."""
     try:
         return recognizer.recognize_google(audio), None
     except sr.UnknownValueError:
