@@ -496,6 +496,31 @@ class Renderer:
         self.offscreen = None
         self.frame = 0
 
+    def warm_up(self, target):
+        """Uses every shader once, invisibly, at startup. The Pi's driver finishes
+        preparing a shader the first time it actually draws, which stalls that
+        frame for ~100ms, so the first tap or first alarm would hitch otherwise."""
+        scratch_tex = self.ctx.texture((4, 4), 3)
+        scratch = self.ctx.framebuffer(color_attachments=[scratch_tex])
+        scratch.use()
+        self._set(self.orb_prog, {"u_res": (4, 4), "u_center": (2, 2), "u_radius": 1.0, "u_visible": 1.0})
+        self.orb_vao.render(moderngl.TRIANGLES)
+        scratch_tex.use(0)
+        self._set(self.blit_prog, {"u_res": (4, 4)})
+        self.blit_vao.render(moderngl.TRIANGLES)
+        self.ctx.enable(moderngl.BLEND)
+        self.ctx.blend_func = moderngl.ONE, moderngl.ONE
+        self.points_buf.write(np.zeros((1, 7), dtype="f4").tobytes())
+        self._set(self.points_prog, {"u_res": (4, 4)})
+        self.points_vao.render(moderngl.POINTS, vertices=1)
+        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
+        self._set(self.quad_prog, {"u_res": (4, 4), "u_rect": (0.0, 0.0, 1.0, 1.0), "u_alpha": 0.0})
+        self.quad_vao.render(moderngl.TRIANGLE_STRIP)
+        self.ctx.finish()
+        scratch.release()
+        scratch_tex.release()
+        target.use()
+
     def set_scale(self, scale):
         """Draws the orb at a lower resolution and scales it up, if the GPU ever can't keep up."""
         if self.offscreen is not None:

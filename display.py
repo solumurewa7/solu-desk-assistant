@@ -114,6 +114,8 @@ class Display:
             print(f"display: {ctx.info['GL_RENDERER']}, OpenGL {ctx.info['GL_VERSION']}, vsync {'on' if self.vsync else 'off'}")
         self.ctx = ctx
         self.renderer = Renderer(ctx, SCREEN_W, SCREEN_H)
+        self.renderer.warm_up(self.target)
+        datetime.strptime("12:00", "%H:%M")  # first strptime call loads a module, do it now instead of mid-animation
 
         self.font_primary = pygame.font.Font(FONT_PATH, 38)
         self.font_secondary = pygame.font.Font(FONT_PATH, 18)
